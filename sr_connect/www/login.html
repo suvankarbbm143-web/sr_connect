@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Login to SR Connect</title>
+  
+  <link rel="manifest" href="/assets/sr_connect/manifest.json" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#f7f7f5] flex justify-center items-center min-h-screen font-sans p-4">
+
+  <div class="w-full max-w-sm flex flex-col items-center relative">
+    
+    <!-- SR Foods Logo -->
+    <div class="w-14 h-14 bg-black rounded-2xl flex items-center justify-center shadow-md mb-5">
+      <span class="text-white text-[11px] font-black tracking-tight text-center leading-tight uppercase">SR<br>FOODS</span>
+    </div>
+
+    <!-- Title -->
+    <h1 class="text-2xl font-bold text-slate-900 mb-8 tracking-tight">Login to SR Connect</h1>
+
+    <!-- Login Form -->
+    <form onsubmit="handleLogin(event)" class="w-full space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1.5">Email</label>
+        <input 
+          id="usr" 
+          type="text" 
+          required 
+          placeholder="Enter email or username"
+          class="w-full px-3.5 py-2.5 bg-[#f0f0ee] border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400"
+        />
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1.5">Password</label>
+        <div class="relative">
+          <input 
+            id="pwd" 
+            type="password" 
+            required 
+            placeholder="••••••••"
+            class="w-full px-3.5 py-2.5 bg-[#f0f0ee] border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400 pr-10"
+          />
+          <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="error-box" class="hidden text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-2.5 text-center font-medium"></div>
+
+      <button 
+        id="login-btn" 
+        type="submit" 
+        class="w-full py-3 bg-[#111827] text-white rounded-xl text-xs font-bold hover:bg-black transition active:scale-[0.98] mt-2 shadow-sm"
+      >
+        Login
+      </button>
+    </form>
+
+    <!-- Custom Native-like Install Popup Modal (Exact Image 16 Style) -->
+    <div id="install-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-24 p-4">
+      <div class="bg-white w-full max-w-xs rounded-2xl p-5 shadow-2xl space-y-4 border border-slate-100 animate-in fade-in zoom-in duration-200">
+        <h3 class="text-sm font-bold text-slate-900">Install app</h3>
+        
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow">
+            <span class="text-white text-[9px] font-black uppercase text-center leading-tight">SR<br>FOODS</span>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-slate-900">SR Connect</p>
+            <p class="text-[10px] text-slate-500">srfoods.products:8088</p>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2">
+          <button onclick="closeInstallModal()" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+            Cancel
+          </button>
+          <button onclick="confirmDownloadApp()" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 font-bold">
+            Install
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Install Banner -->
+    <div id="install-banner" class="p-3 bg-white border border-slate-200 rounded-2xl flex items-center justify-between shadow-xl fixed bottom-4 w-full max-w-sm z-30">
+      <div>
+        <p class="text-xs font-bold text-slate-800">Install SR Connect</p>
+        <p class="text-[10px] text-slate-500">Get the app on your device for easy access.</p>
+      </div>
+      <div class="flex items-center space-x-1.5">
+        <button onclick="openInstallModal()" class="px-3.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Install</button>
+        <button onclick="document.getElementById('install-banner').remove()" class="px-2 py-1 text-slate-400 hover:text-slate-600 text-xs">✕</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let pwaPrompt = null;
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/assets/sr_connect/sw.js').catch(() => {});
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      pwaPrompt = e;
+    });
+
+    function openInstallModal() {
+      document.getElementById('install-modal').classList.remove('hidden');
+    }
+
+    function closeInstallModal() {
+      document.getElementById('install-modal').classList.add('hidden');
+    }
+
+    async function confirmDownloadApp() {
+      closeInstallModal();
+      if (pwaPrompt) {
+        pwaPrompt.prompt();
+        const res = await pwaPrompt.userChoice;
+        if (res.outcome === 'accepted') {
+          const b = document.getElementById('install-banner');
+          if (b) b.remove();
+        }
+        pwaPrompt = null;
+      } else {
+        // Direct Standalone App Launch Trigger
+        const appUrl = window.location.origin + '/sr_connect/home';
+        window.open(appUrl, '_blank', 'menubar=no,status=no,titlebar=no,width=420,height=750');
+      }
+    }
+
+    function togglePassword() {
+      const p = document.getElementById('pwd');
+      p.type = p.type === 'password' ? 'text' : 'password';
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const usr = document.getElementById('usr').value.trim();
+      const pwd = document.getElementById('pwd').value.trim();
+      const btn = document.getElementById('login-btn');
+      const errBox = document.getElementById('error-box');
+
+      errBox.classList.add('hidden');
+      btn.innerText = 'Logging in...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/method/login', {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ usr: usr, pwd: pwd })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.message === 'Logged In') {
+          window.location.href = '/sr_connect/home';
+        } else {
+          errBox.innerText = data.message || 'Invalid Email or Password';
+          errBox.classList.remove('hidden');
+          btn.innerText = 'Login';
+          btn.disabled = false;
+        }
+      } catch (err) {
+        errBox.innerText = 'Connection error. Please try again.';
+        errBox.classList.remove('hidden');
+        btn.innerText = 'Login';
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

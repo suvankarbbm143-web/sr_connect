@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SR Connect</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 flex justify-center min-h-screen font-sans">
+
+  <div class="w-full max-w-md bg-white min-h-screen flex flex-col shadow-xl sm:my-6 sm:rounded-2xl overflow-hidden relative border border-slate-200">
+    
+    <!-- Top Header -->
+    <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white sticky top-0 z-20">
+      <div class="flex items-center space-x-3">
+        <button id="back-btn" onclick="showView('home')" class="hidden p-1 rounded-full hover:bg-slate-100 text-slate-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        </button>
+        <h1 id="page-title" class="text-xl font-bold font-serif text-slate-800 tracking-tight">koyel roy</h1>
+      </div>
+      
+      <div class="flex items-center space-x-2">
+        <button class="p-1.5 text-slate-500 hover:text-slate-700">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        </button>
+        <!-- Login Profile Icon Click -->
+        <a href="/login" title="Login / Profile" class="w-8 h-8 rounded-full bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs flex items-center justify-center cursor-pointer hover:bg-slate-200">
+          K
+        </a>
+      </div>
+    </div>
+
+    <!-- VIEW 1: HOME PAGE -->
+    <div id="view-home" class="p-4 flex-1 bg-slate-50 overflow-y-auto space-y-3 pb-24">
+      <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider px-1">Quick Links</h2>
+      <div class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-sm overflow-hidden">
+        
+        <div class="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer">
+          <div class="flex items-center space-x-3.5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-slate-100 text-slate-700">✓</div>
+            <span class="text-sm font-semibold text-slate-700">ToDo</span>
+          </div>
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </div>
+
+        <!-- Manufacturing Button -->
+        <div onclick="showView('manufacturing')" class="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer transition">
+          <div class="flex items-center space-x-3.5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-teal-100 text-teal-800">M</div>
+            <span class="text-sm font-semibold text-slate-700">Manufacturing</span>
+          </div>
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </div>
+
+        <div class="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer">
+          <div class="flex items-center space-x-3.5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-sky-100 text-sky-800">📄</div>
+            <span class="text-sm font-semibold text-slate-700">Sales Order</span>
+          </div>
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </div>
+
+        <div class="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer">
+          <div class="flex items-center space-x-3.5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-emerald-100 text-emerald-800">📋</div>
+            <span class="text-sm font-semibold text-slate-700">Pick List</span>
+          </div>
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </div>
+
+        <div class="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer">
+          <div class="flex items-center space-x-3.5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-indigo-100 text-indigo-800">🚚</div>
+            <span class="text-sm font-semibold text-slate-700">Delivery Note</span>
+          </div>
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: MANUFACTURING SUB-MENU -->
+    <div id="view-manufacturing" class="hidden p-4 flex-1 bg-slate-50 overflow-y-auto space-y-3 pb-24">
+      <div onclick="showView('work-order')" class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 cursor-pointer transition">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center font-bold text-teal-800 text-xs">WO</div>
+          <span class="text-sm font-semibold text-slate-800">Work Order</span>
+        </div>
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </div>
+
+      <div class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 cursor-pointer transition">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center font-bold text-teal-800 text-xs">JC</div>
+          <span class="text-sm font-semibold text-slate-800">Job Card</span>
+        </div>
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </div>
+
+      <div class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 cursor-pointer transition">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center font-bold text-teal-800 text-xs">SE</div>
+          <span class="text-sm font-semibold text-slate-800">Stock Entry</span>
+        </div>
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </div>
+
+      <div class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 cursor-pointer transition">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center font-bold text-teal-800 text-xs">SB</div>
+          <span class="text-sm font-semibold text-slate-800">Stock Balance</span>
+        </div>
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      </div>
+    </div>
+
+    <!-- VIEW 3: WORK ORDER LIST -->
+    <div id="view-work-order" class="hidden flex-1 flex flex-col bg-slate-50 overflow-hidden">
+      <div class="p-4 bg-white border-b border-slate-200 space-y-2.5">
+        <input type="text" placeholder="Search order or item..." class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400" />
+        <input type="text" placeholder="Search and select batch" class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400" />
+        <div class="flex space-x-2 pt-1 overflow-x-auto">
+          <button class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white">All</button>
+          <button class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600">Not Started</button>
+          <button class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600">In Process</button>
+          <button class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600">Completed</button>
+        </div>
+      </div>
+
+      <div class="p-4 flex-1 overflow-y-auto space-y-3 pb-24">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm text-left space-y-1.5">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-bold text-slate-800">MFG-WO-2026-01187</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">Not Started</span>
+          </div>
+          <div class="text-xs space-y-0.5 text-slate-600">
+            <p><span class="text-slate-400">Production Item:</span> <span class="font-medium text-slate-800">MISLMPCCIJ10</span></p>
+            <p><span class="text-slate-400">Item Name:</span> <span class="font-medium text-slate-800">JELLORUSH</span></p>
+            <p><span class="text-slate-400">Batch No.:</span> <span class="font-medium text-slate-700">F5235MD</span></p>
+            <p><span class="text-slate-400">Quantity:</span> <span class="font-bold text-slate-900">0 / 500.01</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PWA Install Popup Banner -->
+    <div id="install-banner" class="p-3 bg-white border-t border-slate-200 flex items-center justify-between shadow-2xl absolute bottom-0 left-0 right-0 z-30">
+      <div>
+        <p class="text-xs font-bold text-slate-800">Install MiConnect</p>
+        <p class="text-[10px] text-slate-500">Get the app on your device for easy access.</p>
+      </div>
+      <div class="flex items-center space-x-1.5">
+        <button onclick="alert('MiConnect App install started!')" class="px-3.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800">Install</button>
+        <button onclick="document.getElementById('install-banner').remove()" class="px-2 py-1 text-slate-400 hover:text-slate-600 text-xs">✕</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let current = 'home';
+    function showView(view) {
+      document.getElementById('view-home').classList.add('hidden');
+      document.getElementById('view-manufacturing').classList.add('hidden');
+      document.getElementById('view-work-order').classList.add('hidden');
+
+      const title = document.getElementById('page-title');
+      const back = document.getElementById('back-btn');
+
+      if (view === 'manufacturing') {
+        document.getElementById('view-manufacturing').classList.remove('hidden');
+        title.innerText = 'Manufacturing';
+        back.classList.remove('hidden');
+        back.setAttribute('onclick', "showView('home')");
+      } else if (view === 'work-order') {
+        document.getElementById('view-work-order').classList.remove('hidden');
+        title.innerText = 'Work Order';
+        back.classList.remove('hidden');
+        back.setAttribute('onclick', "showView('manufacturing')");
+      } else {
+        document.getElementById('view-home').classList.remove('hidden');
+        title.innerText = 'koyel roy';
+        back.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>

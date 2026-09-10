@@ -1,0 +1,6 @@
+import frappe
+
+def get_context(context):
+    context.boot = frappe.sessions.get()
+    context.csrf_token = frappe.sessions.get_csrf_token()
+    return context

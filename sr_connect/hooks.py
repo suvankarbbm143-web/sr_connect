@@ -5,21 +5,26 @@ app_description = "Custom employee portal and production workspace for SR Foods"
 app_email = "admin@srfoods.com"
 app_license = "mit"
 
+
+
+# SR Connect website home after login
+
+
+
 # Apps
 # ------------------
 
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "sr_connect",
-# 		"logo": "/assets/sr_connect/logo.png",
-# 		"title": "SR Connect",
-# 		"route": "/sr_connect",
-# 		"has_permission": "sr_connect.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+    {
+        "name": "sr_connect",
+        "logo": "/assets/sr_connect/logo.svg",
+        "title": "SR Connect",
+        "route": "/home"
+    }
+]
 
 # Includes in <head>
 # ------------------
@@ -247,3 +252,21 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+
+
+# SR_CONNECT MATERIAL CONSUMPTION OVERRIDE
+#
+# Native ERPNext Work Order button continues to call:
+# erpnext.manufacturing.doctype.work_order.work_order.make_stock_entry
+#
+# Only Material Consumption quantity is overridden.
+override_whitelisted_methods = {
+    **globals().get("override_whitelisted_methods", {}),
+    "erpnext.manufacturing.doctype.work_order.work_order.make_stock_entry":
+        "sr_connect.api.make_stock_entry",
+}
+
+
+
+
+doctype_js = {"Work Order": "public/js/work_order.js"}

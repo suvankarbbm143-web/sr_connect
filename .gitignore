@@ -5,3 +5,31 @@
 tags
 node_modules
 __pycache__
+# Local backup files
+*.bak
+*.bak_*
+*.backup
+
+# Local backup files
+*.bak
+*.bak_*
+*.backup
+*.backup_*
+*.before_*
+*.broken_*
+*.WHITESCREEN_*
+
+# Local backup files
+*.bak*
+*.backup*
+*.before_*
+*.broken*
+*.WHITESCREEN_*
+frontend/
+
+*.bak*
+*.backup*
+*.before_*
+*.broken*
+*.WHITESCREEN_*
+frontend/

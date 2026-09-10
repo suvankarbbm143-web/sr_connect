@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>SR Connect</title>
+    <script>
+      window.frappe = {};
+      window.frappe.boot = {{ boot | json }};
+      window.frappe.csrf_token = "{{ csrf_token }}";
+      window.site_name = "{{ frappe.local.site }}";
+    </script>
+    <link rel="stylesheet" href="/assets/sr_connect/frontend/assets/index-aaffb53f.css">
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/assets/sr_connect/frontend/assets/index-b20a0073.js"></script>
+  </body>
+</html>

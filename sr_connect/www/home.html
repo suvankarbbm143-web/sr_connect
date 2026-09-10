@@ -117,7 +117,7 @@ async function searchERPItems(query){
           }
 
           results.innerHTML =
-            rows.map(function(row){
+            (Array.isArray(rows) ? rows : []).map(function(row){
 
               const code =
                 row.value ||
@@ -490,8 +490,7 @@ async function loadWorkOrderBOMs(){
         + encodeURIComponent(item)
       );
 
-    const boms =
-      result.items || [];
+    const boms = Array.isArray(result.items) ? result.items : [];
 
     select.innerHTML =
       '<option value="">Select BOM</option>' +
@@ -611,7 +610,7 @@ async function refreshWorkOrderPreview(){
       </div>
 
       <div class="border rounded-xl overflow-hidden">
-        ${rows.map(row => `
+        ${(Array.isArray(rows) ? rows : []).map(row => `
           <div class="px-3 py-2 border-b last:border-b-0 text-[10px]">
             <div class="font-bold">
               ${escapeHtml(row.item_name || row.item_code)}
@@ -965,8 +964,8 @@ document.getElementById(
         <div class="border rounded-xl overflow-hidden">
 
           ${
-            wo.required_items.length
-            ? wo.required_items.map(
+            (Array.isArray(wo.required_items) ? wo.required_items : []).length
+            ? (Array.isArray(wo.required_items) ? wo.required_items : []).map(
                 function(row){
 
                   return `
@@ -1103,8 +1102,8 @@ function openWorkOrderStockTransfer(){
       <div class="mt-4 border rounded-xl overflow-hidden">
 
         ${
-          wo.required_items.length
-          ? wo.required_items.map(
+          (Array.isArray(wo.required_items) ? wo.required_items : []).length
+          ? (Array.isArray(wo.required_items) ? wo.required_items : []).map(
               function(row){
 
                 return `
@@ -1477,7 +1476,7 @@ async function openWorkOrderAssignEmployee(){
 
       <div class="space-y-2">
 
-        ${jobs.map((job,index) => {
+        ${(Array.isArray(jobs) ? jobs : []).map((job,index) => {
 
           const assigned =
             job.assigned_to || "";
@@ -7804,8 +7803,7 @@ async function loadWorkOrderBOMs(){
         + encodeURIComponent(item)
       );
 
-    const boms =
-      result.items || [];
+    const boms = Array.isArray(result.items) ? result.items : [];
 
     select.innerHTML =
       '<option value="">Select BOM</option>' +
@@ -8995,7 +8993,7 @@ function renderWorkOrder(){
 
         ${
           jobs.length
-          ? jobs.map((job,index) => {
+          ? (Array.isArray(jobs) ? jobs : []).map((job,index) => {
 
               const assignedEmployee =
                 String(

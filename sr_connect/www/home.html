@@ -1785,6 +1785,8 @@ async function openWorkOrderAssignEmployee(){
 
 async function openWorkOrder(id){
 
+  window.removeWorkOrderCreateButton();
+
   if(!id){
     return;
   }
@@ -3187,6 +3189,8 @@ async function openDraftWorkOrderForEdit(id){
 }
 
 function renderWorkOrder(){
+
+  window.removeWorkOrderCreateButton();
 
   if(!selectedWorkOrder){
     return;
@@ -8425,6 +8429,8 @@ async function openJob(id){
 
 async function openWorkOrder(id){
 
+  window.removeWorkOrderCreateButton();
+
   if(!id){
     return;
   }
@@ -8577,6 +8583,8 @@ renderWorkOrder();
 
 
 function renderWorkOrder(){
+
+  window.removeWorkOrderCreateButton();
 
   if(!selectedWorkOrder){
     return;

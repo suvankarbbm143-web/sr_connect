@@ -6911,3 +6911,247 @@ def get_stock_balance_transaction_detail(stock_ledger_entry):
 
     return result
 
+
+@frappe.whitelist()
+def sr_stock_alert_save(item, alert_limit, employee=None, active=1):
+    item=str(item or "").strip()
+    employee=str(employee or "").strip()
+
+    if not item:
+        frappe.throw("Item is required")
+
+    if not frappe.db.exists("Item",item):
+        frappe.throw("Invalid Item")
+
+    if employee and not frappe.db.exists("Employee",employee):
+        frappe.throw("Invalid Employee")
+
+    doctype="SR Stock Alert Setting"
+    name=frappe.db.get_value(doctype,{"item":item},"name")
+
+    if name:
+        doc=frappe.get_doc(doctype,name)
+    else:
+        doc=frappe.new_doc(doctype)
+        doc.item=item
+
+    doc.alert_limit=float(alert_limit or 0)
+    doc.employee=employee
+    doc.active=1 if str(active) in ("1","true","True") else 0
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {"ok":True,"name":doc.name}
+
+
+@frappe.whitelist()
+def sr_stock_alert_get(item=None):
+    if not item:
+        return {"setting":None}
+
+    doc=frappe.db.get_value(
+        "SR Stock Alert Setting",
+        {"item":item},
+        ["name","item","alert_limit","employee","active"],
+        as_dict=True
+    )
+
+    current_stock=frappe.db.sql(
+        """
+        SELECT COALESCE(SUM(actual_qty),0)
+        FROM `tabBin`
+        WHERE item_code=%s
+        """,
+        (item,)
+    )[0][0] or 0
+
+    stock_uom=frappe.db.get_value("Item",item,"stock_uom") or ""
+
+    if not doc:
+        return {
+            "setting": {
+                "current_stock":current_stock,
+                "stock_uom":stock_uom
+            }
+        }
+
+    doc.current_stock=current_stock
+    doc.stock_uom=stock_uom
+
+    return {"setting":doc}
+
+
+@frappe.whitelist()
+def sr_stock_alert_test(item):
+    item=str(item or "").strip()
+
+    if not item:
+        frappe.throw("Item is required")
+
+    setting=frappe.db.get_value(
+        "SR Stock Alert Setting",
+        {"item":item},
+        ["employee"],
+        as_dict=True
+    )
+
+    if not setting or not setting.employee:
+        frappe.throw("Employee is required")
+
+    chat_id=frappe.db.get_value(
+        "Employee",
+        setting.employee,
+        "custom_telegram_chat_id"
+    )
+
+    if not chat_id:
+        frappe.throw("Telegram Chat ID is not set for the selected Employee")
+
+    bot_token=frappe.db.get_single_value(
+        "SR Telegram Settings",
+        "telegram_bot_token"
+    )
+
+    if not bot_token:
+        frappe.throw("Telegram Bot Token is not configured")
+
+    stock=frappe.db.sql(
+        """
+        SELECT COALESCE(SUM(actual_qty),0)
+        FROM `tabBin`
+        WHERE item_code=%s
+        """,
+        (item,)
+    )[0][0] or 0
+
+    uom=frappe.db.get_value("Item",item,"stock_uom") or ""
+
+    message=(
+        "🔔 STOCK ALERT TEST\n\n"
+        f"Item: {item}\n"
+        f"Current Stock: {float(stock):g} {uom}\n"
+        "This is a test notification from SR Connect."
+    )
+
+    import requests
+    response=requests.post(
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        json={"chat_id":chat_id,"text":message},
+        timeout=15
+    )
+
+    data=response.json()
+
+    if not data.get("ok"):
+        frappe.throw(
+            "Telegram error: "
+            + str(data.get("description") or "Unknown error")
+        )
+
+    return {"ok":True}
+
+
+@frappe.whitelist()
+def sr_stock_alert_items():
+    return frappe.get_all(
+        "Item",
+        fields=["name", "item_name", "stock_uom"],
+        order_by="name asc",
+        limit_page_length=0
+    )
+
+
+@frappe.whitelist()
+def sr_stock_alert_employees():
+    return frappe.get_all(
+        "Employee",
+        filters={"status": "Active"},
+        fields=["name", "employee_name"],
+        order_by="employee_name asc",
+        limit_page_length=0
+    )
+
+
+@frappe.whitelist()
+def sr_save_telegram_config(telegram_bot_token, active=1):
+    token=str(telegram_bot_token or "").strip()
+    if not token:
+        frappe.throw("Telegram Bot Token is required")
+
+    doc=frappe.get_single("SR Telegram Settings")
+    doc.telegram_bot_token=token
+    doc.active=1 if str(active) in ("1","true","True") else 0
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {"ok":True}
+
+
+@frappe.whitelist()
+def sr_stock_alert_employee_telegram(employee):
+    employee=str(employee or "").strip()
+    if not employee:
+        return {"configured":False}
+
+    chat_id=frappe.db.get_value(
+        "Employee",
+        employee,
+        "custom_telegram_chat_id"
+    )
+
+    return {
+        "configured":bool(chat_id),
+        "chat_id":chat_id or ""
+    }
+
+
+@frappe.whitelist()
+def sr_get_my_telegram_chat_id():
+    token=frappe.db.get_single_value(
+        "SR Telegram Settings",
+        "telegram_bot_token"
+    )
+
+    if not token:
+        frappe.throw("Telegram Bot Token is not configured")
+
+    import requests
+
+    response=requests.get(
+        f"https://api.telegram.org/bot{token}/getUpdates",
+        timeout=15
+    )
+
+    data=response.json()
+
+    if not data.get("ok"):
+        frappe.throw(
+            "Telegram error: "
+            + str(data.get("description") or "Unknown error")
+        )
+
+    updates=data.get("result") or []
+
+    if not updates:
+        frappe.throw(
+            "No Telegram message received yet. Open your Stock Alert Bot and press Start first."
+        )
+
+    for update in reversed(updates):
+        msg=update.get("message") or {}
+        chat=msg.get("chat") or {}
+        chat_id=chat.get("id")
+
+        if chat_id:
+            return {
+                "ok":True,
+                "chat_id":str(chat_id),
+                "name":str(
+                    chat.get("first_name")
+                    or chat.get("username")
+                    or ""
+                )
+            }
+
+    frappe.throw("Telegram Chat ID could not be found")
+

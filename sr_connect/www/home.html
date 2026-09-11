@@ -4538,6 +4538,458 @@ window.openApplication = function(name){
   if(name==="SR Connect"){showManufacturing();}
 }
 
+async function openStockAlertSetting(){
+  currentView="stockAlertSetting";
+  hideAll();
+
+  const box=document.getElementById("workOrderView");
+  if(!box){return;}
+
+  box.classList.remove("hidden");
+
+  document.getElementById("pageTitle").innerText="Stock Alert Setting";
+  document.getElementById("pageSub").innerText="Telegram Stock Alert";
+  document.getElementById("backBtn").classList.remove("hidden");
+
+  box.innerHTML=`
+    <div class="bg-white border rounded-2xl p-4 shadow-sm">
+
+      <div class="font-bold text-sm">
+        Stock Alert Setting
+      </div>
+
+      <div class="text-[10px] text-slate-500 mt-1">
+        Telegram alert will be sent when the item stock limit is reached or crossed.
+      </div>
+
+      <div class="mt-4 space-y-3">
+
+        <select
+          id="srAlertItem"
+          class="w-full border rounded-xl px-3 py-3 text-xs bg-white"
+          onchange="srAlertItemChanged()"
+        >
+          <option value="">Select Item</option>
+        </select>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <div class="text-[10px] font-bold text-slate-500 mb-1">CURRENT STOCK</div>
+            <div id="srAlertCurrentStock"
+              class="w-full border rounded-xl px-3 py-3 text-xs bg-slate-50 font-bold">
+              Select Item
+            </div>
+          </div>
+          <div>
+            <div class="text-[10px] font-bold text-slate-500 mb-1">ALERT LIMIT</div>
+            <input
+              id="srAlertLimit"
+              type="number"
+              min="0"
+              step="0.01"
+              class="w-full border rounded-xl px-3 py-3 text-xs"
+              placeholder="Alert Limit"
+            >
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onclick="srGetMyTelegramChatId()"
+          class="w-full py-3 rounded-xl bg-blue-600 text-white text-xs font-bold"
+        >
+          GET MY TELEGRAM CHAT ID
+        </button>
+
+        <div
+          id="srMyTelegramChatId"
+          class="hidden text-xs font-bold rounded-xl p-3 bg-green-50 text-green-700"
+        ></div>
+
+        <select
+          id="srAlertEmployee"
+          class="w-full border rounded-xl px-3 py-3 text-xs bg-white"
+          onchange="srAlertEmployeeChanged()"
+        >
+          <option value="">Select Employee</option>
+        </select>
+
+        <label class="flex items-center gap-2 text-xs font-bold">
+          <input
+            id="srAlertActive"
+            type="checkbox"
+            checked
+            class="w-5 h-5"
+          >
+          ACTIVE
+        </label>
+
+        <div
+          id="srAlertMessage"
+          class="hidden text-xs font-bold rounded-xl p-3"
+        ></div>
+
+        <button
+          type="button"
+          onclick="srSaveStockAlert()"
+          class="w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold"
+        >
+          SAVE STOCK ALERT
+        </button>
+
+        <button
+          type="button"
+          onclick="srTestTelegramAlert()"
+          class="w-full py-3 rounded-xl bg-blue-600 text-white text-xs font-bold"
+        >
+          TEST TELEGRAM
+        </button>
+
+      </div>
+
+    </div>
+  `;
+
+  await srLoadAlertItems();
+  await srLoadAlertEmployees();
+}
+
+
+async function srLoadAlertEmployees(){
+
+  const select =
+    document.getElementById("srAlertEmployee");
+
+  if(!select){
+    return;
+  }
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_stock_alert_employees"
+      );
+
+    const employees =
+      Array.isArray(result)
+        ? result
+        : [];
+
+    select.innerHTML =
+      '<option value="">Select Employee</option>'
+      +
+      employees.map(function(emp){
+
+        const id =
+          String(emp.name || "");
+
+        const name =
+          String(emp.employee_name || id);
+
+        return '<option value="'
+          + escapeAttr(id)
+          + '">'
+          + escapeHtml(id)
+          + ' — '
+          + escapeHtml(name)
+          + '</option>';
+
+      }).join("");
+
+  }catch(e){
+
+    console.error("Stock Alert Employee Load Error:",e);
+
+    select.innerHTML =
+      '<option value="">Unable to load Employees</option>';
+
+  }
+
+}
+
+
+async function srAlertItemChanged(){
+  const item=document.getElementById("srAlertItem");
+  const stock=document.getElementById("srAlertCurrentStock");
+  if(!item || !stock){return;}
+
+  const code=String(item.value||"").trim();
+
+  if(!code){
+    stock.innerText="Select Item";
+    return;
+  }
+
+  stock.innerText="Loading...";
+
+  try{
+    const result=await api(
+      "/api/method/sr_connect.www.home.sr_stock_alert_get"
+      + "?item="+encodeURIComponent(code)
+    );
+
+    const current=Number(
+      result && result.setting && result.setting.current_stock
+        ? result.setting.current_stock
+        : 0
+    );
+
+    const uom=String(
+      result && result.setting && result.setting.stock_uom
+        ? result.setting.stock_uom
+        : ""
+    );
+
+    stock.innerText=String(current) + (uom ? " " + uom : "");
+  }catch(e){
+    console.error("Stock Alert Current Stock Error:",e);
+    stock.innerText="Unable to load stock";
+  }
+}
+
+
+async function srLoadAlertItems(){
+
+  const select =
+    document.getElementById("srAlertItem");
+
+  if(!select){
+    return;
+  }
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_stock_alert_items"
+      );
+
+    const items =
+      Array.isArray(result)
+        ? result
+        : [];
+
+    select.innerHTML =
+      '<option value="">Select Item</option>'
+      +
+      items.map(function(item){
+
+        const code =
+          String(item.name || "");
+
+        const name =
+          String(item.item_name || code);
+
+        return '<option value="'
+          + escapeAttr(code)
+          + '">'
+          + escapeHtml(code)
+          + ' — '
+          + escapeHtml(name)
+          + '</option>';
+
+      }).join("");
+
+  }catch(e){
+
+    console.error("Stock Alert Item Load Error:",e);
+
+    select.innerHTML =
+      '<option value="">Unable to load Items</option>';
+
+  }
+
+}
+
+
+async function srSaveTelegramConfig(){
+  const token=document.getElementById("srAlertBotToken");
+
+  if(!token || !token.value.trim()){
+    alert("Telegram Bot Token is required");
+    return;
+  }
+
+  try{
+    await api(
+      "/api/method/sr_connect.www.home.sr_save_telegram_config"
+      + "?telegram_bot_token="
+      + encodeURIComponent(token.value.trim())
+      + "&active=1"
+    );
+
+    alert("Telegram configuration saved successfully.");
+    token.value="";
+  }catch(e){
+    console.error("Telegram Config Error:",e);
+    alert(e.message || "Unable to save Telegram configuration.");
+  }
+}
+
+
+async function srAlertEmployeeChanged(){
+  const employee=document.getElementById("srAlertEmployee");
+  if(!employee){return;}
+
+  const old=document.getElementById("srAlertTelegramStatus");
+  if(old){old.remove();}
+
+  const box=document.createElement("div");
+  box.id="srAlertTelegramStatus";
+  box.className="text-[10px] font-bold rounded-xl px-3 py-2 bg-slate-50 text-slate-500";
+  box.innerText="Checking Telegram connection...";
+  employee.parentNode.insertBefore(box,employee.nextSibling);
+
+  const id=String(employee.value||"").trim();
+
+  if(!id){
+    box.innerText="Select an Employee";
+    return;
+  }
+
+  try{
+    const result=await api(
+      "/api/method/sr_connect.www.home.sr_stock_alert_employee_telegram"
+      + "?employee="+encodeURIComponent(id)
+    );
+
+    if(result && result.configured){
+      box.innerText="✓ Telegram Connected";
+      box.className="text-[10px] font-bold rounded-xl px-3 py-2 bg-green-50 text-green-700";
+    }else{
+      box.innerText="⚠ Telegram Chat ID is not configured for this Employee";
+      box.className="text-[10px] font-bold rounded-xl px-3 py-2 bg-orange-50 text-orange-700";
+    }
+  }catch(e){
+    console.error("Telegram Employee Check Error:",e);
+    box.innerText="Unable to check Telegram connection";
+  }
+}
+
+
+async function srGetMyTelegramChatId(){
+  const box=document.getElementById("srMyTelegramChatId");
+  if(!box){return;}
+
+  box.classList.remove("hidden");
+  box.className="text-xs font-bold rounded-xl p-3 bg-slate-50 text-slate-600";
+  box.innerText="Checking Telegram...";
+
+  try{
+    const result=await api(
+      "/api/method/sr_connect.www.home.sr_get_my_telegram_chat_id"
+    );
+
+    const chatId=String(result && result.chat_id || "");
+
+    if(!chatId){
+      throw new Error("Chat ID not found");
+    }
+
+    box.className="text-xs font-bold rounded-xl p-3 bg-green-50 text-green-700";
+    box.innerText="✓ Telegram Chat ID: "+chatId;
+  }catch(e){
+    console.error("Telegram Chat ID Error:",e);
+    box.className="text-xs font-bold rounded-xl p-3 bg-red-50 text-red-700";
+    box.innerText=e.message || "Unable to get Telegram Chat ID";
+  }
+}
+
+
+async function srSaveStockAlert(){
+
+  const item =
+    document.getElementById("srAlertItem").value.trim();
+
+  const alert_limit =
+    document.getElementById("srAlertLimit").value;
+
+  const employee =
+    document.getElementById("srAlertEmployee").value.trim();
+
+  const active =
+    document.getElementById("srAlertActive").checked ? 1 : 0;
+
+  const msg =
+    document.getElementById("srAlertMessage");
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_stock_alert_save"
+        + "?item=" + encodeURIComponent(item)
+        + "&alert_limit=" + encodeURIComponent(alert_limit)
+        + "&employee=" + encodeURIComponent(employee)
+        + "&telegram_chat_id=" + encodeURIComponent(telegram_chat_id)
+        + "&telegram_bot_token=" + encodeURIComponent(telegram_bot_token)
+        + "&active=" + active
+      );
+
+    msg.className =
+      "text-xs font-bold rounded-xl p-3 bg-emerald-50 text-emerald-700";
+
+    msg.innerText =
+      "✓ Stock Alert Saved";
+
+    msg.classList.remove("hidden");
+
+  }catch(e){
+
+    msg.className =
+      "text-xs font-bold rounded-xl p-3 bg-rose-50 text-rose-700";
+
+    msg.innerText =
+      e.message || "Save failed";
+
+    msg.classList.remove("hidden");
+
+  }
+
+}
+
+
+async function srTestTelegramAlert(){
+
+  const item =
+    document.getElementById("srAlertItem").value.trim();
+
+  const msg =
+    document.getElementById("srAlertMessage");
+
+  try{
+
+    await srSaveStockAlert();
+
+    await api(
+      "/api/method/sr_connect.www.home.sr_stock_alert_test"
+      + "?item="
+      + encodeURIComponent(item)
+    );
+
+    msg.className =
+      "text-xs font-bold rounded-xl p-3 bg-emerald-50 text-emerald-700";
+
+    msg.innerText =
+      "✓ Telegram test message sent";
+
+    msg.classList.remove("hidden");
+
+  }catch(e){
+
+    msg.className =
+      "text-xs font-bold rounded-xl p-3 bg-rose-50 text-rose-700";
+
+    msg.innerText =
+      e.message || "Telegram test failed";
+
+    msg.classList.remove("hidden");
+
+  }
+
+}
+
 function showManufacturing(){
 
   window.removeWorkOrderCreateButton();
@@ -4550,6 +5002,30 @@ function showManufacturing(){
   document.getElementById("pageTitle").innerText="Manufacturing";
   document.getElementById("pageSub").innerText="Production";
   document.getElementById("backBtn").classList.remove("hidden");
+
+  const alertCard=document.getElementById("stockAlertSettingCard");
+  if(alertCard){ alertCard.remove(); }
+
+  const manufacturing=document.getElementById("manufacturingView");
+  if(manufacturing){
+    manufacturing.insertAdjacentHTML("beforeend",`
+      <div
+        id="stockAlertSettingCard"
+        onclick="openStockAlertSetting()"
+        class="mt-4 bg-white border rounded-2xl p-4 shadow-sm cursor-pointer active:scale-[.99]"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-bold text-sm">Stock Alert Setting</div>
+            <div class="text-[10px] text-slate-500 mt-1">
+              Set item-wise stock limit & notification employee
+            </div>
+          </div>
+          <div class="text-teal-600 font-bold text-xs">OPEN →</div>
+        </div>
+      </div>
+    `);
+  }
 }
 
 function showProfile(){
@@ -4564,6 +5040,12 @@ function showProfile(){
 }
 
 function goBack(){
+
+  if(currentView === "stockAlertSetting"){
+    currentView="manufacturing";
+    showManufacturing();
+    return;
+  }
 
   if(
     currentView === "stockEntryDetail" ||
@@ -8366,6 +8848,11 @@ function showList(){
    ========================================================= */
 
 async function openJob(id){
+
+  srEnsureParent(
+    "list",
+    {docType:"Job Card"}
+  );
 
   /*
    * Persist JOB page immediately.
@@ -12528,6 +13015,69 @@ window.addEventListener(
       event.state;
 
     if(
+      state &&
+      state.srStockEntryV3
+    ){
+
+      srRestoringHistory =
+        true;
+
+      try{
+
+        if(state.screen === "home"){
+
+          srSEV3.tab =
+            state.tab ||
+            "not_started";
+
+          await srSEV3OpenHome(
+            false
+          );
+
+          return;
+        }
+
+        if(state.screen === "batches"){
+
+          srSEV3.tab =
+            state.tab ||
+            "not_started";
+
+          await srSEV3OpenBatches(
+            state.group,
+            false
+          );
+
+          return;
+        }
+
+        if(
+          state.screen === "detail" &&
+          state.work_order
+        ){
+
+          srSEV3.tab =
+            state.tab ||
+            "not_started";
+
+          await srSEV3OpenDetail(
+            state.work_order,
+            false
+          );
+
+          return;
+        }
+
+      }finally{
+
+        srRestoringHistory =
+          false;
+
+      }
+
+    }
+
+    if(
       !state ||
       !state.sr_connect
     ){
@@ -12768,6 +13318,11 @@ async function srOpenStockEntryCreate(){
 
   box.classList.remove(
     "hidden"
+  );
+
+  srEnsureParent(
+    currentView === "stockEntryCreate" ? "stockEntryCreate" : "stockEntryHome",
+    {docType:"Stock Entry"}
   );
 
   currentView =

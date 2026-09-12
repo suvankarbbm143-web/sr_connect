@@ -273,7 +273,7 @@ doctype_js = {"Work Order": "public/js/work_order.js"}
 
 fixtures = [
     {"dt": "Custom Field", "filters": [["name", "in", [
-        "Item-shelf_lifemonths",
+        "Item-custom_shelf_life_months",
         "Employee-custom_telegram_chat_id",
         "Quality Inspection-custom_qc_inspection_type"
     ]]]}

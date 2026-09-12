@@ -233,7 +233,7 @@ async function selectERPItem(
         "?doctype=Item" +
         "&fieldname=" +
         encodeURIComponent(
-          JSON.stringify(["shelf_lifemonths"])
+          JSON.stringify(["custom_shelf_life_months"])
         ) +
         "&filters=" +
         encodeURIComponent(
@@ -251,7 +251,7 @@ async function selectERPItem(
 
     const months =
       Number(
-        data?.message?.shelf_lifemonths || 0
+        data?.message?.custom_shelf_life_months || 0
       );
 
     if(shelf){
@@ -351,7 +351,7 @@ async function refreshWorkOrderExpiry(){
         "?doctype=Item" +
         "&fieldname=" +
         encodeURIComponent(
-          JSON.stringify(["shelf_lifemonths"])
+          JSON.stringify(["custom_shelf_life_months"])
         ) +
         "&filters=" +
         encodeURIComponent(
@@ -369,7 +369,7 @@ async function refreshWorkOrderExpiry(){
 
     const months =
       Number(
-        data?.message?.shelf_lifemonths || 0
+        data?.message?.custom_shelf_life_months || 0
       );
 
     if(shelf){

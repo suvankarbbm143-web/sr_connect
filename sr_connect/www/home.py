@@ -872,7 +872,7 @@ def _job_card_data(name):
             shelf_life_months = frappe.db.get_value(
                 "Item",
                 item_code_for_shelf,
-                "shelf_lifemonths",
+                "custom_shelf_life_months",
             )
 
             if shelf_life_months:
@@ -2416,7 +2416,7 @@ def get_work_order_create_data(production_item):
             frappe.db.get_value(
                 "Item",
                 production_item,
-                "shelf_lifemonths",
+                "custom_shelf_life_months",
             ) or 0
         )
     )
@@ -2452,7 +2452,7 @@ def get_work_order_create_data(production_item):
             }
             for row in rows
         ],
-        "shelf_lifemonths": shelf_life_months,
+        "custom_shelf_life_months": shelf_life_months,
     }
 
 
@@ -3042,17 +3042,17 @@ def get_item_shelf_life(production_item):
 
     if not production_item:
         return {
-            "shelf_lifemonths": 0
+            "custom_shelf_life_months": 0
         }
 
     months = frappe.db.get_value(
         "Item",
         production_item,
-        "shelf_lifemonths",
+        "custom_shelf_life_months",
     ) or 0
 
     return {
-        "shelf_lifemonths": int(flt(months))
+        "custom_shelf_life_months": int(flt(months))
     }
 
 
@@ -3097,7 +3097,7 @@ def create_work_order_from_sr(
     # -----------------------------------------------------
     # MFG / EXP / SHELF LIFE
     # MFG = selected Work Order date
-    # EXP = MFG + Item Master shelf_lifemonths
+    # EXP = MFG + Item Master custom_shelf_life_months
     # -----------------------------------------------------
     mfg_date = str(posting_date or "").strip()[:10]
     shelf_life_months = 0
@@ -3109,7 +3109,7 @@ def create_work_order_from_sr(
                 frappe.db.get_value(
                     "Item",
                     production_item,
-                    "shelf_lifemonths",
+                    "custom_shelf_life_months",
                 ) or 0
             )
         )

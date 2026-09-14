@@ -260,11 +260,10 @@ def make_stock_entry(
             ).strip().upper()
 
             # ONLY PP WOVEN BAG
-            if (
-                "PP WOVEN BAG" not in item_code
-                and
-                "PP WOVEN BAG" not in item_name
-            ):
+            # Any packing/output-linked item using Nos/No/Numbers
+            # scales with actual final production quantity.
+            item_uom = str(row.uom or "").strip().upper()
+            if item_uom not in ("NOS", "NO", "NUMBERS"):
                 continue
 
             # ONLY NOS

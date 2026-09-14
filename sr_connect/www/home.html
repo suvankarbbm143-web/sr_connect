@@ -4539,6 +4539,25 @@ window.openApplication = function(name){
 }
 
 async function openStockAlertSetting(){
+  const roles=window.frappe && frappe.user_roles ? frappe.user_roles : [];
+  const user=(window.frappe && frappe.session && frappe.session.user) ? frappe.session.user : "{{ frappe.session.user }}";
+
+  const canView =
+    user==="Administrator" ||
+    roles.includes("System Manager") ||
+    roles.includes("Stock Manager") ||
+    roles.includes("Stock User");
+
+  const canManage =
+    user==="Administrator" ||
+    roles.includes("System Manager") ||
+    roles.includes("Stock Manager");
+
+  if(!canView){
+    alert("You do not have permission to view Stock Alerts.");
+    return;
+  }
+
   currentView="stockAlertSetting";
   hideAll();
 
@@ -4553,22 +4572,16 @@ async function openStockAlertSetting(){
 
   box.innerHTML=`
     <div class="bg-white border rounded-2xl p-4 shadow-sm">
-
-      <div class="font-bold text-sm">
-        Stock Alert Setting
-      </div>
-
+      <div class="font-bold text-sm">Stock Alert Setting</div>
       <div class="text-[10px] text-slate-500 mt-1">
         Telegram alert will be sent when the item stock limit is reached or crossed.
       </div>
 
+      ${canManage ? `
       <div class="mt-4 space-y-3">
-
-        <select
-          id="srAlertItem"
+        <select id="srAlertItem"
           class="w-full border rounded-xl px-3 py-3 text-xs bg-white"
-          onchange="srAlertItemChanged()"
-        >
+          onchange="srAlertItemChanged()">
           <option value="">Select Item</option>
         </select>
 
@@ -4582,78 +4595,275 @@ async function openStockAlertSetting(){
           </div>
           <div>
             <div class="text-[10px] font-bold text-slate-500 mb-1">ALERT LIMIT</div>
-            <input
-              id="srAlertLimit"
-              type="number"
-              min="0"
-              step="0.01"
+            <input id="srAlertLimit" type="number" min="0" step="0.01"
               class="w-full border rounded-xl px-3 py-3 text-xs"
-              placeholder="Alert Limit"
-            >
+              placeholder="Alert Limit">
           </div>
         </div>
 
-        <button
-          type="button"
-          onclick="srGetMyTelegramChatId()"
-          class="w-full py-3 rounded-xl bg-blue-600 text-white text-xs font-bold"
-        >
-          GET MY TELEGRAM CHAT ID
-        </button>
-
-        <div
-          id="srMyTelegramChatId"
-          class="hidden text-xs font-bold rounded-xl p-3 bg-green-50 text-green-700"
-        ></div>
-
-        <select
-          id="srAlertEmployee"
+        <select id="srAlertEmployee"
           class="w-full border rounded-xl px-3 py-3 text-xs bg-white"
-          onchange="srAlertEmployeeChanged()"
-        >
+          onchange="srAlertEmployeeChanged()">
           <option value="">Select Employee</option>
         </select>
 
         <label class="flex items-center gap-2 text-xs font-bold">
-          <input
-            id="srAlertActive"
-            type="checkbox"
-            checked
-            class="w-5 h-5"
-          >
+          <input id="srAlertActive" type="checkbox" checked class="w-5 h-5">
           ACTIVE
         </label>
 
-        <div
-          id="srAlertMessage"
-          class="hidden text-xs font-bold rounded-xl p-3"
-        ></div>
+        <div id="srAlertMessage"
+          class="hidden text-xs font-bold rounded-xl p-3"></div>
 
-        <button
-          type="button"
-          onclick="srSaveStockAlert()"
-          class="w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold"
-        >
+        <button type="button" onclick="srSaveStockAlert()"
+          class="w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold">
           SAVE STOCK ALERT
         </button>
 
-        <button
-          type="button"
-          onclick="srTestTelegramAlert()"
-          class="w-full py-3 rounded-xl bg-blue-600 text-white text-xs font-bold"
-        >
+        <button type="button" onclick="srTestTelegramAlert()"
+          class="w-full py-3 rounded-xl bg-blue-600 text-white text-xs font-bold">
           TEST TELEGRAM
         </button>
-
       </div>
+      ` : `
+      <div class="mt-4 text-xs text-slate-500 border rounded-xl p-3">
+        You have view-only access to Stock Alerts.
+      </div>
+      `}
 
+      <div class="border-t pt-4 mt-4">
+        <div class="font-bold text-sm mb-2">Stock Alert List</div>
+        <div id="srStockAlertList" class="space-y-2">
+          <div class="text-xs text-slate-500">Loading...</div>
+        </div>
+      </div>
     </div>
   `;
 
-  await srLoadAlertItems();
-  await srLoadAlertEmployees();
+  if(canManage){
+    await srLoadAlertItems();
+    await srLoadAlertEmployees();
+  }
+
+  await srLoadStockAlertList();
 }
 
+async function srLoadStockAlertList(){
+  const box=document.getElementById("srStockAlertList");
+  if(!box){return;}
+
+  try{
+    const result=await api(
+      "/api/method/sr_connect.www.home.sr_stock_alert_list"
+    );
+
+    const rows=Array.isArray(result)
+      ? result
+      : (result && Array.isArray(result.message) ? result.message : []);
+
+    if(!rows.length){
+      box.innerHTML='<div class="text-xs text-slate-500 border rounded-xl p-3">No Stock Alert configured.</div>';
+      return;
+    }
+
+    const roles=(window.frappe_user_roles||window.frappe?.user_roles||[]);
+    const user=(window.sr_current_user||"{{ frappe.session.user }}");
+
+    const canManage =
+      user==="Administrator" ||
+      roles.includes("System Manager") ||
+      roles.includes("Stock Manager");
+
+    box.innerHTML=rows.map(function(row){
+      const active=Number(row.active)===1;
+
+      return `
+        <div class="border rounded-xl p-3 bg-slate-50">
+          <div class="flex justify-between gap-2">
+            <div class="text-xs font-bold">${escapeHtml(String(row.item||""))}</div>
+            <div class="text-[10px] font-bold ${active ? "text-green-600" : "text-red-600"}">
+              ${active ? "ACTIVE" : "INACTIVE"}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 mt-2 text-[10px]">
+            <div>
+              <span class="text-slate-500">Stock</span><br>
+              <b>${escapeHtml(String(row.current_stock??0))}</b>
+            </div>
+            <div>
+              <span class="text-slate-500">Limit</span><br>
+              <b>${escapeHtml(String(row.alert_limit??0))}</b>
+            </div>
+            <div>
+              <span class="text-slate-500">Employee</span><br>
+              <b>${escapeHtml(String(row.employee_name||row.employee||""))}</b>
+            </div>
+          </div>
+
+          ${canManage ? `
+          <div class="flex gap-2 mt-3">
+            <button type="button"
+              class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold"
+              onclick="srEditStockAlert('${escapeHtml(String(row.item||""))}')">
+              Edit
+            </button>
+
+            <button type="button"
+              class="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-[10px] font-bold"
+              onclick="srTestStockAlertRow('${escapeHtml(String(row.item||""))}')">
+              Test
+            </button>
+
+            <button type="button"
+              class="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-bold"
+              onclick="srDeleteStockAlert('${escapeHtml(String(row.item||""))}')">
+              Delete
+            </button>
+          </div>
+          ` : ""}
+        </div>`;
+    }).join("");
+
+  }catch(e){
+    console.error("Stock Alert List Error:",e);
+    box.innerHTML=
+      '<div class="text-xs text-red-600 border rounded-xl p-3">'+
+      escapeHtml(String(e.message||"Unable to load Stock Alert List."))+
+      '</div>';
+  }
+}
+
+
+async function srEditStockAlert(item){
+  try{
+    const result=await api(
+      "/api/method/sr_connect.www.home.sr_stock_alert_get?item="+encodeURIComponent(item)
+    );
+
+    const row=result && result.setting ? result.setting : null;
+
+    if(!row){
+      alert("Stock Alert not found");
+      return;
+    }
+
+    const itemField=document.getElementById("srAlertItem");
+    const limitField=document.getElementById("srAlertLimit");
+    const employeeField=document.getElementById("srAlertEmployee");
+    const activeField=document.getElementById("srAlertActive");
+
+    if(itemField) itemField.value=row.item || "";
+    if(limitField) limitField.value=row.alert_limit || "";
+    if(employeeField) employeeField.value=row.employee || "";
+    if(activeField) activeField.checked=Number(row.active)===1;
+
+    if(itemField){
+      await srAlertItemChanged();
+    }
+
+    window.scrollTo({top:0,behavior:"smooth"});
+  }catch(e){
+    console.error("Stock Alert Edit Error:",e);
+    alert(e.message || "Unable to edit Stock Alert");
+  }
+}
+
+async function srTestStockAlertRow(item){
+  try{
+    await api(
+      "/api/method/sr_connect.www.home.sr_stock_alert_test?item="+encodeURIComponent(item)
+    );
+    alert("Test Telegram sent successfully.");
+  }catch(e){
+    console.error("Stock Alert Test Error:",e);
+    alert(
+      e.message && String(e.message).includes("bot was blocked")
+      ? "Telegram bot is blocked by this Employee. Please open @srfoods_stock_alert_bot in Telegram and press Start."
+      : (e.message || "Test Telegram failed")
+    );
+  }
+}
+
+async function srDeleteStockAlert(item){
+  const overlay=document.createElement("div");
+
+  overlay.style.cssText=
+    "position:fixed;inset:0;background:rgba(0,0,0,.45);"+
+    "display:flex;align-items:center;justify-content:center;"+
+    "z-index:99999;padding:20px;";
+
+  overlay.innerHTML=
+    '<div style="width:100%;max-width:360px;background:white;border-radius:18px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)">'+
+      '<div style="font-size:16px;font-weight:800;color:#0f172a">Delete Stock Alert?</div>'+
+      '<div style="font-size:12px;color:#64748b;margin-top:8px">Are you sure you want to delete <b>'+escapeHtml(String(item))+'</b>?</div>'+
+      '<div style="display:flex;gap:10px;margin-top:18px">'+
+        '<button type="button" id="srDeleteCancel" style="flex:1;padding:10px;border-radius:10px;border:1px solid #cbd5e1;background:white;font-size:12px;font-weight:700">CANCEL</button>'+
+        '<button type="button" id="srDeleteConfirm" style="flex:1;padding:10px;border-radius:10px;border:0;background:#dc2626;color:white;font-size:12px;font-weight:700">DELETE</button>'+
+      '</div>'+
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  document.getElementById("srDeleteCancel").onclick=function(){
+    overlay.remove();
+  };
+
+  document.getElementById("srDeleteConfirm").onclick=async function(){
+    const btn=this;
+    btn.disabled=true;
+    btn.innerText="DELETING...";
+
+    try{
+      await api(
+        "/api/method/sr_connect.www.home.sr_stock_alert_delete?item="+
+        encodeURIComponent(item),
+        {method:"POST",body:JSON.stringify({item:item})}
+      );
+
+      overlay.remove();
+      await srLoadStockAlertList();
+      alert("Stock Alert deleted successfully.");
+    }catch(e){
+      btn.disabled=false;
+      btn.innerText="DELETE";
+      console.error("Stock Alert Delete Error:",e);
+      alert(e.message || "Unable to delete Stock Alert");
+    }
+  };
+}
+
+async function srEditStockAlert(item){
+  try{
+    const result=await api(
+      "/api/method/sr_connect.www.home.sr_stock_alert_get?item="+encodeURIComponent(item)
+    );
+
+    const row=result && result.setting ? result.setting : null;
+
+    if(!row){
+      alert("Stock Alert not found");
+      return;
+    }
+
+    const itemField=document.getElementById("srAlertItem");
+    const limitField=document.getElementById("srAlertLimit");
+    const employeeField=document.getElementById("srAlertEmployee");
+    const activeField=document.getElementById("srAlertActive");
+
+    if(itemField) itemField.value=row.item || "";
+    if(limitField) limitField.value=row.alert_limit || "";
+    if(employeeField) employeeField.value=row.employee || "";
+    if(activeField) activeField.checked=Number(row.active)===1;
+
+    await srAlertItemChanged();
+
+    window.scrollTo({top:0,behavior:"smooth"});
+  }catch(e){
+    console.error("Stock Alert Edit Error:",e);
+    alert(e.message || "Unable to edit Stock Alert");
+  }
+}
 
 async function srLoadAlertEmployees(){
 
@@ -4922,8 +5132,6 @@ async function srSaveStockAlert(){
         + "?item=" + encodeURIComponent(item)
         + "&alert_limit=" + encodeURIComponent(alert_limit)
         + "&employee=" + encodeURIComponent(employee)
-        + "&telegram_chat_id=" + encodeURIComponent(telegram_chat_id)
-        + "&telegram_bot_token=" + encodeURIComponent(telegram_bot_token)
         + "&active=" + active
       );
 

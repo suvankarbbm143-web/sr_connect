@@ -6912,8 +6912,31 @@ def get_stock_balance_transaction_detail(stock_ledger_entry):
     return result
 
 
+
+def sr_stock_alert_can_view():
+    roles=set(frappe.get_roles(frappe.session.user))
+    return bool(
+        frappe.session.user=="Administrator"
+        or "System Manager" in roles
+        or "Stock Manager" in roles
+        or "Stock User" in roles
+    )
+
+
+def sr_stock_alert_can_manage():
+    roles=set(frappe.get_roles(frappe.session.user))
+    return bool(
+        frappe.session.user=="Administrator"
+        or "System Manager" in roles
+        or "Stock Manager" in roles
+    )
+
+
 @frappe.whitelist()
 def sr_stock_alert_save(item, alert_limit, employee=None, active=1):
+    if not sr_stock_alert_can_manage():
+        frappe.throw("You do not have permission to manage Stock Alerts")
+
     item=str(item or "").strip()
     employee=str(employee or "").strip()
 
@@ -6944,8 +6967,143 @@ def sr_stock_alert_save(item, alert_limit, employee=None, active=1):
     return {"ok":True,"name":doc.name}
 
 
+
+def sr_stock_alert_stock_change(doc, method=None):
+    try:
+        frappe.enqueue(
+            "sr_connect.www.home.sr_stock_alert_auto_check",
+            queue="short",
+            enqueue_after_commit=True,
+            job_name="SR Stock Alert Auto Check"
+        )
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "SR Stock Alert Stock Change Trigger")
+
+
+def sr_stock_alert_auto_check():
+    """Send Telegram alert once when stock crosses to/below the configured limit."""
+    import requests
+
+    settings=frappe.get_all(
+        "SR Stock Alert Setting",
+        filters={"active":1},
+        fields=["name","item","alert_limit","employee"]
+    )
+
+    if not settings:
+        return
+
+    token_name=frappe.db.get_value("SR Telegram Settings", {}, "name")
+    if not token_name:
+        return
+
+    bot_token=frappe.get_doc(
+        "SR Telegram Settings",
+        token_name
+    ).get_password("telegram_bot_token")
+
+    if not bot_token:
+        return
+
+    for setting in settings:
+        try:
+            item=setting.item
+            limit=float(setting.alert_limit or 0)
+
+            stock=frappe.db.sql(
+                """
+                SELECT COALESCE(SUM(actual_qty),0)
+                FROM `tabBin`
+                WHERE item_code=%s
+                """,
+                (item,)
+            )[0][0] or 0
+            stock=float(stock)
+
+            cache_key=f"sr_stock_alert_sent:{setting.name}"
+
+            if stock > limit:
+                frappe.cache().delete_value(cache_key)
+                continue
+
+            if frappe.cache().get_value(cache_key):
+                continue
+
+            if not setting.employee:
+                continue
+
+            chat_id=frappe.db.get_value(
+                "Employee",
+                setting.employee,
+                "custom_telegram_chat_id"
+            )
+
+            if not chat_id:
+                continue
+
+            uom=frappe.db.get_value("Item",item,"stock_uom") or ""
+
+            message=(
+                "🚨 STOCK ALERT\n\n"
+                f"Item: {item}\n"
+                f"Current Stock: {stock:g} {uom}\n"
+                f"Alert Limit: {limit:g} {uom}\n"
+                "Stock has reached the configured alert limit."
+            )
+
+            response=requests.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id":chat_id,"text":message},
+                timeout=15
+            )
+
+            data=response.json()
+
+            if data.get("ok"):
+                frappe.cache().set_value(cache_key,1)
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                "SR Stock Alert Auto Check"
+            )
+
+
+@frappe.whitelist()
+def sr_stock_alert_list():
+    rows=frappe.db.sql(
+        """
+        SELECT
+            a.item,
+            a.alert_limit,
+            a.employee,
+            a.active,
+            e.employee_name
+        FROM `tabSR Stock Alert Setting` a
+        LEFT JOIN `tabEmployee` e ON e.name=a.employee
+        ORDER BY a.modified DESC
+        """,
+        as_dict=True
+    )
+
+    for row in rows:
+        row["current_stock"]=frappe.db.sql(
+            """
+            SELECT COALESCE(SUM(actual_qty),0)
+            FROM `tabBin`
+            WHERE item_code=%s
+            """,
+            (row["item"],)
+        )[0][0] or 0
+
+    return rows
+
+
 @frappe.whitelist()
 def sr_stock_alert_get(item=None):
+    if not sr_stock_alert_can_view():
+        frappe.throw("You do not have permission to view Stock Alerts")
+
     if not item:
         return {"setting":None}
 
@@ -6982,7 +7140,39 @@ def sr_stock_alert_get(item=None):
 
 
 @frappe.whitelist()
+def sr_stock_alert_delete(item):
+    if not sr_stock_alert_can_manage():
+        frappe.throw("You do not have permission to delete Stock Alerts")
+
+    item=str(item or "").strip()
+
+    if not item:
+        frappe.throw("Item is required")
+
+    name=frappe.db.get_value(
+        "SR Stock Alert Setting",
+        {"item":item},
+        "name"
+    )
+
+    if not name:
+        frappe.throw("Stock Alert not found")
+
+    frappe.delete_doc(
+        "SR Stock Alert Setting",
+        name,
+        ignore_permissions=True
+    )
+    frappe.db.commit()
+
+    return {"ok":True}
+
+
+@frappe.whitelist()
 def sr_stock_alert_test(item):
+    if not sr_stock_alert_can_manage():
+        frappe.throw("You do not have permission to test Stock Alerts")
+
     item=str(item or "").strip()
 
     if not item:
@@ -7007,10 +7197,10 @@ def sr_stock_alert_test(item):
     if not chat_id:
         frappe.throw("Telegram Chat ID is not set for the selected Employee")
 
-    bot_token=frappe.db.get_single_value(
+    bot_token=frappe.get_doc(
         "SR Telegram Settings",
-        "telegram_bot_token"
-    )
+        frappe.db.get_value("SR Telegram Settings", {}, "name")
+    ).get_password("telegram_bot_token")
 
     if not bot_token:
         frappe.throw("Telegram Bot Token is not configured")
@@ -7107,8 +7297,9 @@ def sr_stock_alert_employee_telegram(employee):
 
 @frappe.whitelist()
 def sr_get_my_telegram_chat_id():
-    token=frappe.db.get_single_value(
+    token=frappe.db.get_value(
         "SR Telegram Settings",
+        {},
         "telegram_bot_token"
     )
 

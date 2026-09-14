@@ -136,7 +136,7 @@
         pwaPrompt = null;
       } else {
         // Direct Standalone App Launch Trigger
-        const appUrl = window.location.origin + '/sr_connect/home';
+        const appUrl = window.location.origin + '/home';
         window.open(appUrl, '_blank', 'menubar=no,status=no,titlebar=no,width=420,height=750');
       }
     }
@@ -169,7 +169,7 @@
 
         const data = await res.json();
         if (res.ok && data.message === 'Logged In') {
-          window.location.href = '/sr_connect/home';
+          window.location.href = '/home';
         } else {
           errBox.innerText = data.message || 'Invalid Email or Password';
           errBox.classList.remove('hidden');

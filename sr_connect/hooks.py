@@ -279,3 +279,20 @@ fixtures = [
     ]]]}
 ]
 
+
+# SR CONNECT - AUTOMATIC STOCK TELEGRAM ALERT
+scheduler_events = {
+    "cron": {
+        "* * * * *": [
+            "sr_connect.www.home.sr_stock_alert_auto_check"
+        ]
+    }
+}
+
+
+
+doc_events = {
+    "Stock Ledger Entry": {
+        "after_insert": "sr_connect.www.home.sr_stock_alert_stock_change"
+    }
+}

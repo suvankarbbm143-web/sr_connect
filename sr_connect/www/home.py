@@ -1,3 +1,4 @@
+import re
 import frappe
 from frappe.utils import now_datetime, flt, get_datetime, time_diff_in_seconds
 
@@ -7346,3 +7347,2985 @@ def sr_get_my_telegram_chat_id():
 
     frappe.throw("Telegram Chat ID could not be found")
 
+
+# =========================================================
+# SR CONNECT QC INSPECTION V1
+# =========================================================
+
+def _sr_qc_category_from_row(row):
+    """
+    Product:
+        custom_qc_inspection_type = Product
+        OR template = Bake a way (QC)
+
+    Quality:
+        custom_qc_inspection_type = Application
+        OR template = Bake a way
+    """
+
+    category = str(
+        row.get("custom_qc_inspection_type") or ""
+    ).strip().lower()
+
+    if category == "product":
+        return "product"
+
+    if category == "application":
+        return "quality"
+
+    template = str(
+        row.get("quality_inspection_template") or ""
+    ).strip().lower()
+
+    if template == "bake a way (qc)":
+        return "product"
+
+    if template == "bake a way":
+        return "quality"
+
+    return ""
+
+
+def _sr_qc_item_name(item_code):
+    if not item_code:
+        return ""
+
+    return str(
+        frappe.db.get_value(
+            "Item",
+            item_code,
+            "item_name"
+        )
+        or item_code
+    )
+
+
+def _sr_qc_get_inspections(
+    item_code=None,
+    batch_no=None,
+    category=None
+):
+    filters = {
+        "docstatus": 1,
+    }
+
+    if item_code:
+        filters["item_code"] = item_code
+
+    if batch_no:
+        filters["batch_no"] = batch_no
+
+    rows = frappe.get_all(
+        "Quality Inspection",
+        filters=filters,
+        fields=[
+            "name",
+            "item_code",
+            "batch_no",
+            "inspection_type",
+            "quality_inspection_template",
+            "status",
+            "creation",
+            "modified",
+            "custom_qc_inspection_type",
+        ],
+        order_by="creation desc",
+        limit_page_length=5000,
+    )
+
+    result = []
+
+    for row in rows:
+        cat = _sr_qc_category_from_row(row)
+
+        if category and cat != category:
+            continue
+
+        result.append({
+            "name": str(row.name or ""),
+            "item_code": str(row.item_code or ""),
+            "item_name": _sr_qc_item_name(row.item_code),
+            "batch_no": str(row.batch_no or ""),
+            "inspection_type": str(
+                row.inspection_type or ""
+            ),
+            "quality_inspection_template": str(
+                row.quality_inspection_template or ""
+            ),
+            "custom_qc_inspection_type": str(
+                row.custom_qc_inspection_type or ""
+            ),
+            "category": cat,
+            "status": str(row.status or ""),
+            "creation": str(row.creation or ""),
+            "modified": str(row.modified or ""),
+        })
+
+    return result
+
+
+
+@frappe.whitelist()
+def sr_qc_submit(
+    item_code,
+    batch_no,
+    category,
+    readings=None,
+    inspection_type="Outgoing",
+    quality_inspection_template=""
+):
+
+    if _is_guest():
+        frappe.throw("Please login")
+
+    import json
+
+    item_code = str(
+        item_code or ""
+    ).strip()
+
+    batch_no = str(
+        batch_no or ""
+    ).strip()
+
+    category = str(
+        category or ""
+    ).strip().lower()
+
+    if isinstance(readings, str):
+
+        try:
+            readings = json.loads(readings)
+        except Exception:
+            frappe.throw(
+                "Invalid parameter data."
+            )
+
+    if not isinstance(readings, list):
+        readings = []
+
+    if category not in (
+        "product",
+        "quality"
+    ):
+        frappe.throw(
+            "Invalid QC category."
+        )
+
+    # --------------------------------------------------------
+    # Server-side validation
+    # --------------------------------------------------------
+
+    errors = _sr_qc_validate_readings(
+        readings
+    )
+
+    if errors:
+
+        frappe.throw(
+            "QC rejected: "
+            + " | ".join(
+                str(x.get("message") or "")
+                for x in errors
+            )
+        )
+
+    # --------------------------------------------------------
+    # Prevent duplicate completed inspection
+    # --------------------------------------------------------
+
+    existing = _sr_qc_get_inspections(
+        item_code=item_code,
+        batch_no=batch_no,
+        category=category
+    )
+
+    if existing:
+
+        frappe.throw(
+            "QC Inspection already completed for batch "
+            + batch_no
+        )
+
+    # --------------------------------------------------------
+    # Validate DRAFT Work Order
+    #
+    # QC must be completed BEFORE the final Work Order submit.
+    # --------------------------------------------------------
+
+    # Resolve the Work Order from the actual Manufacture Stock Entry
+    # carrying this Item + Batch. This avoids selecting another Work
+    # Order that happens to have the same custom_new_batch_id.
+    wo = None
+
+    candidate_wos = frappe.get_all(
+        "Work Order",
+        filters={
+            "production_item": item_code,
+            "custom_new_batch_id": batch_no,
+            "docstatus": ["in", [0, 1]],
+        },
+        fields=["name", "docstatus", "creation"],
+        order_by="docstatus asc, creation desc",
+        limit_page_length=50,
+    )
+
+    for wo_row in candidate_wos:
+        candidate_name = wo_row.get("name")
+
+        stock_entries = frappe.get_all(
+            "Stock Entry",
+            filters={
+                "work_order": candidate_name,
+                "stock_entry_type": "Manufacture",
+                "docstatus": ["in", [0, 1]],
+            },
+            fields=["name"],
+            order_by="posting_date desc, creation desc",
+            limit_page_length=100,
+        )
+
+        found_batch = False
+
+        for se_row in stock_entries:
+            try:
+                se_doc = frappe.get_doc("Stock Entry", se_row.name)
+            except Exception:
+                continue
+
+            for se_item in se_doc.items:
+                if se_item.item_code != item_code:
+                    continue
+
+                batches = str(
+                    getattr(se_item, "batch_no", "") or ""
+                ).strip()
+
+                if batches == batch_no:
+                    found_batch = True
+                    break
+
+                batch_list = [
+                    x.strip()
+                    for x in re.split(r"[,\\n]+", batches)
+                    if x.strip()
+                ]
+
+                if batch_no in batch_list:
+                    found_batch = True
+                    break
+
+            if found_batch:
+                break
+
+        if found_batch:
+            wo = candidate_name
+            break
+
+    if not wo:
+        frappe.throw(
+            "Work Order not found for Item "
+            + item_code
+            + ", Batch "
+            + batch_no
+        )
+
+    if not wo:
+
+        frappe.throw(
+            "Work Order not found for batch "
+            + batch_no
+        )
+
+    # --------------------------------------------------------
+    # QC must be required by the submitted Stock Entry.
+    # Do not allow an unrelated Product/Application inspection.
+    # --------------------------------------------------------
+
+    requirements = _sr_qc_stock_entry_requirements(
+        work_order_name=wo,
+        item_code=item_code,
+        batch_no=batch_no,
+    )
+
+    if not requirements.get(category):
+
+        frappe.throw(
+            (
+                "This batch does not require "
+                + (
+                    "Product Inspection."
+                    if category == "product"
+                    else "Quality Inspection."
+                )
+            )
+        )
+
+    custom_category = (
+        "Product"
+        if category == "product"
+        else "Application"
+    )
+
+    # --------------------------------------------------------
+    # Determine template automatically
+    # --------------------------------------------------------
+
+    auto = _sr_qc_auto_template(
+        item_code=item_code,
+        category=category
+    )
+
+    template_name = (
+        str(
+            quality_inspection_template
+            or ""
+        ).strip()
+        or str(
+            auto.get("name")
+            or ""
+        ).strip()
+    )
+
+    # --------------------------------------------------------
+    # Use existing draft if present
+    # --------------------------------------------------------
+
+    draft_rows = frappe.get_all(
+        "Quality Inspection",
+        filters={
+            "docstatus": 0,
+            "item_code": item_code,
+            "batch_no": batch_no,
+            "custom_qc_inspection_type":
+                custom_category,
+        },
+        fields=["name"],
+        order_by="modified desc",
+        limit_page_length=1,
+    )
+
+    if draft_rows:
+
+        doc = frappe.get_doc(
+            "Quality Inspection",
+            draft_rows[0]["name"]
+        )
+
+        doc.set("readings", [])
+
+    else:
+
+        doc = frappe.new_doc(
+            "Quality Inspection"
+        )
+
+    doc.item_code = item_code
+    doc.batch_no = batch_no
+    doc.inspection_type = (
+        str(inspection_type or "").strip()
+        or "Outgoing"
+    )
+
+    if template_name:
+
+        doc.quality_inspection_template = (
+            template_name
+        )
+
+    try:
+        doc.custom_qc_inspection_type = (
+            custom_category
+        )
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # Write readings
+    #
+    # IMPORTANT:
+    # Quality Inspection Template is the source of truth.
+    #
+    # Template controls:
+    #   - numeric
+    #   - min / max
+    #   - acceptance criteria
+    #   - formula
+    #   - formula_based_criteria
+    #
+    # Operator data controls ONLY the actual reading.
+    #
+    # Numeric actual     -> reading_1
+    # Non-numeric actual -> reading_value
+    # --------------------------------------------------------
+
+    template_data = _sr_qc_template_readings(
+        item_code,
+        category
+    )
+
+    template_rows = (
+        template_data.get("readings")
+        if isinstance(template_data, dict)
+        else []
+    ) or []
+
+    template_map = {}
+
+    for tr in template_rows:
+        if not isinstance(tr, dict):
+            continue
+
+        key = str(
+            tr.get("parameter")
+            or tr.get("specification")
+            or ""
+        ).strip()
+
+        if key:
+            template_map[key.lower()] = tr
+
+    for data in readings:
+
+        if not isinstance(data, dict):
+            continue
+
+        row = doc.append("readings", {})
+
+        parameter = str(
+            data.get("parameter")
+            or data.get("parameter_name")
+            or ""
+        ).strip()
+
+        template_row = template_map.get(
+            parameter.lower()
+        )
+
+        # ----------------------------------------------------
+        # Template is authoritative when parameter matches.
+        # ----------------------------------------------------
+
+        if template_row:
+
+            specification = str(
+                template_row.get("specification")
+                or parameter
+                or ""
+            ).strip()
+
+            criteria_value = str(
+                template_row.get("criteria")
+                or ""
+            ).strip()
+
+            formula = str(
+                template_row.get("acceptance_formula")
+                or ""
+            ).strip()
+
+            try:
+                is_numeric = not bool(
+                    int(
+                        template_row.get("non_numeric")
+                        or 0
+                    )
+                )
+            except Exception:
+                is_numeric = not bool(
+                    template_row.get("non_numeric")
+                )
+
+            minimum = template_row.get(
+                "min_value"
+            )
+
+            maximum = template_row.get(
+                "max_value"
+            )
+
+            try:
+                formula_based = bool(
+                    int(
+                        template_row.get("formula_based")
+                        or 0
+                    )
+                )
+            except Exception:
+                formula_based = bool(
+                    template_row.get("formula_based")
+                )
+
+        else:
+
+            # Fallback only if parameter is not found
+            # in the selected template.
+
+            specification = str(
+                data.get("specification")
+                or parameter
+                or ""
+            ).strip()
+
+            criteria_value = str(
+                data.get("acceptance_criteria")
+                or data.get("criteria")
+                or ""
+            ).strip()
+
+            formula = str(
+                data.get("acceptance_formula")
+                or ""
+            ).strip()
+
+            explicit_numeric = data.get(
+                "numeric"
+            )
+
+            if explicit_numeric is not None:
+                try:
+                    is_numeric = bool(
+                        int(explicit_numeric)
+                    )
+                except Exception:
+                    is_numeric = bool(
+                        explicit_numeric
+                    )
+
+            elif data.get("non_numeric") is not None:
+
+                is_numeric = not bool(
+                    data.get("non_numeric")
+                )
+
+            else:
+
+                minimum = data.get("min_value")
+                maximum = data.get("max_value")
+
+                is_numeric = (
+                    str(
+                        minimum
+                        if minimum is not None
+                        else ""
+                    ).strip() != ""
+                    or
+                    str(
+                        maximum
+                        if maximum is not None
+                        else ""
+                    ).strip() != ""
+                )
+
+            minimum = data.get("min_value")
+            maximum = data.get("max_value")
+            formula_based = bool(formula)
+
+        # ----------------------------------------------------
+        # Parameter
+        # ----------------------------------------------------
+
+        if row.meta.has_field("parameter"):
+            row.parameter = parameter
+
+        # ----------------------------------------------------
+        # Specification
+        # ----------------------------------------------------
+
+        if row.meta.has_field("specification"):
+            row.specification = specification
+
+        # ----------------------------------------------------
+        # Acceptance Criteria
+        #
+        # IMPORTANT:
+        # This is template criteria, NOT operator reading.
+        # ----------------------------------------------------
+
+        if row.meta.has_field("value"):
+            row.value = criteria_value
+
+        # ----------------------------------------------------
+        # Numeric flag
+        # ----------------------------------------------------
+
+        if row.meta.has_field("numeric"):
+            row.numeric = 1 if is_numeric else 0
+
+        # ----------------------------------------------------
+        # Min / Max
+        # ----------------------------------------------------
+
+        if (
+            row.meta.has_field("min_value")
+            and minimum not in (None, "")
+        ):
+            row.min_value = minimum
+
+        if (
+            row.meta.has_field("max_value")
+            and maximum not in (None, "")
+        ):
+            row.max_value = maximum
+
+        # ----------------------------------------------------
+        # Actual operator reading
+        # ----------------------------------------------------
+
+        actual_value = str(
+            data.get("reading_value")
+            if data.get("reading_value") is not None
+            else data.get("value")
+            or ""
+        ).strip()
+
+        if is_numeric:
+
+            if row.meta.has_field("reading_1"):
+                row.reading_1 = actual_value
+
+            if row.meta.has_field("reading_value"):
+                row.reading_value = None
+
+        else:
+
+            if row.meta.has_field("reading_value"):
+                row.reading_value = actual_value
+
+            if row.meta.has_field("reading_1"):
+                row.reading_1 = None
+
+        # ----------------------------------------------------
+        # Acceptance Formula
+        # ----------------------------------------------------
+
+        if (
+            row.meta.has_field("acceptance_formula")
+            and formula
+        ):
+            row.acceptance_formula = formula
+
+        # ----------------------------------------------------
+        # Formula Based Criteria
+        # ----------------------------------------------------
+
+        if row.meta.has_field(
+            "formula_based_criteria"
+        ):
+            row.formula_based_criteria = (
+                1 if formula_based else 0
+            )
+
+    try:
+        if doc.meta.has_field("status"):
+            doc.status = "Accepted"
+    except Exception:
+        pass
+
+    if doc.is_new():
+
+        doc.insert(
+            ignore_permissions=True
+        )
+
+    else:
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+    doc.submit()
+
+    frappe.db.commit()
+
+    return {
+        "success": True,
+        "name": str(doc.name),
+        "batch_no": batch_no,
+        "item_code": item_code,
+        "category": category,
+        "quality_inspection_template":
+            template_name,
+        "message":
+            "✓ QC Inspection submitted successfully.",
+    }
+
+
+@frappe.whitelist()
+def sr_qc_get_home():
+    """
+    Return completed Work Order production items.
+
+    An item/category is exposed only when:
+      - a completed Work Order exists
+      - and that category has historical Quality Inspection/template evidence
+    """
+
+    if _is_guest():
+        frappe.throw("Please login")
+
+    work_orders = frappe.get_all(
+        "Work Order",
+        filters={
+            "docstatus": 1,
+            "status": "Completed",
+        },
+        fields=[
+            "name",
+            "production_item",
+            "item_name",
+            "custom_new_batch_id",
+            "creation",
+        ],
+        order_by="creation desc",
+        limit_page_length=5000,
+    )
+
+    inspections = frappe.get_all(
+        "Quality Inspection",
+        filters={
+            "docstatus": 1,
+        },
+        fields=[
+            "name",
+            "item_code",
+            "batch_no",
+            "inspection_type",
+            "quality_inspection_template",
+            "status",
+            "creation",
+            "custom_qc_inspection_type",
+        ],
+        order_by="creation desc",
+        limit_page_length=5000,
+    )
+
+    category_by_item = {}
+
+    for row in inspections:
+        item = str(row.item_code or "").strip()
+
+        if not item:
+            continue
+
+        category = _sr_qc_category_from_row(row)
+
+        if not category:
+            continue
+
+        category_by_item.setdefault(
+            item,
+            set()
+        ).add(category)
+
+    groups = {}
+
+    for wo in work_orders:
+
+        item_code = str(
+            wo.production_item or ""
+        ).strip()
+
+        if not item_code:
+            continue
+
+        categories = category_by_item.get(
+            item_code,
+            set()
+        )
+
+        if not categories:
+            continue
+
+        if item_code not in groups:
+
+            groups[item_code] = {
+                "item_code": item_code,
+                "item_name": str(
+                    wo.item_name
+                    or _sr_qc_item_name(item_code)
+                    or item_code
+                ),
+                "categories": sorted(
+                    list(categories)
+                ),
+                "work_orders": [],
+            }
+
+        batch = str(
+            wo.custom_new_batch_id or ""
+        ).strip()
+
+        groups[item_code]["work_orders"].append({
+            "work_order": str(wo.name or ""),
+            "item_code": item_code,
+            "item_name": str(
+                wo.item_name
+                or _sr_qc_item_name(item_code)
+                or item_code
+            ),
+            "batch_no": batch,
+            "creation": str(wo.creation or ""),
+        })
+
+    return {
+        "success": True,
+        "items": list(groups.values()),
+    }
+
+
+@frappe.whitelist()
+def sr_qc_get_item_batches(
+    item_code,
+    category
+):
+    """
+    Return batches from Manufacture Stock Entries.
+
+    Both DRAFT and SUBMITTED Manufacture Stock Entries are considered.
+
+    Stock Entry controls QC requirement:
+
+        Production Inspection Required
+            -> Product Inspection
+
+        Application Inspection Required
+            -> Quality Inspection
+
+    Work Order may still be DRAFT while QC is being completed.
+
+    Completed Inspection is shown only after:
+        1. required QC is submitted
+        2. Work Order is finally submitted
+    """
+
+    if _is_guest():
+        frappe.throw("Please login")
+
+    item_code = str(item_code or "").strip()
+    category = str(category or "").strip().lower()
+
+    if category not in ("product", "quality"):
+        frappe.throw("Invalid QC category.")
+
+    if not item_code:
+        frappe.throw("Item is required.")
+
+    # --------------------------------------------------------
+    # Find Work Orders for this item.
+    # Draft Work Order is the normal QC-before-submit case.
+    # Submitted Work Order is needed for Completed Inspection.
+    # --------------------------------------------------------
+
+    work_orders = frappe.get_all(
+        "Work Order",
+        filters={
+            "production_item": item_code,
+            "docstatus": ["in", [0, 1]],
+        },
+        fields=[
+            "name",
+            "production_item",
+            "item_name",
+            "custom_new_batch_id",
+            "creation",
+            "docstatus",
+            "status",
+        ],
+        order_by="creation desc",
+        limit_page_length=5000,
+    )
+
+    wo_by_name = {
+        str(x.name): x
+        for x in work_orders
+        if x.name
+    }
+
+    # --------------------------------------------------------
+    # Read Manufacture Stock Entries directly.
+    # This is important because the batch is actually stored
+    # in Stock Entry Item.batch_no.
+    # --------------------------------------------------------
+
+    stock_entries = frappe.get_all(
+        "Stock Entry",
+        filters={
+            "docstatus": ["in", [0, 1]],
+            "stock_entry_type": "Manufacture",
+        },
+        fields=[
+            "name",
+            "work_order",
+            "posting_date",
+            "creation",
+            "custom_application_inspection_required",
+            "custom_production_inspection_required",
+        ],
+        order_by="creation desc",
+        limit_page_length=5000,
+    )
+
+    batches = []
+
+    for se in stock_entries:
+
+        work_order_name = str(
+            se.get("work_order") or ""
+        ).strip()
+
+        if not work_order_name:
+            continue
+
+        # The Manufacture Stock Entry itself is the source
+        # of the QC batch. Do NOT discard the batch just because
+        # the Work Order lookup is unavailable here.
+        wo = wo_by_name.get(work_order_name)
+
+        doc = frappe.get_doc(
+            "Stock Entry",
+            se.name
+        )
+
+        production_required = bool(
+            se.get(
+                "custom_production_inspection_required"
+            )
+        )
+
+        application_required = bool(
+            se.get(
+                "custom_application_inspection_required"
+            )
+        )
+
+        if category == "product" and not production_required:
+            continue
+
+        if category == "quality" and not application_required:
+            continue
+
+        for item in doc.items:
+
+            if str(
+                item.item_code or ""
+            ).strip() != item_code:
+                continue
+
+            batch_text = str(
+                getattr(item, "batch_no", "")
+                or ""
+            ).strip()
+
+            if not batch_text:
+                continue
+
+            batch_list = [
+                x.strip()
+                for x in re.split(
+                    r"[,\n]+",
+                    batch_text
+                )
+                if x.strip()
+            ]
+
+            for batch in batch_list:
+
+                batches.append({
+                    "batch_no": batch,
+                    "work_order": work_order_name,
+                    "item_code": item_code,
+                    "item_name": str(
+                        (
+                            wo.item_name
+                            if wo
+                            else ""
+                        )
+                        or _sr_qc_item_name(item_code)
+                        or item_code
+                    ),
+                    "creation": str(
+                        (
+                            wo.creation
+                            if wo
+                            else ""
+                        )
+                        or se.creation
+                        or ""
+                    ),
+                    "work_order_docstatus": int(
+                        (
+                            wo.docstatus
+                            if wo
+                            else 0
+                        )
+                        or 0
+                    ),
+                    "work_order_status": str(
+                        (
+                            wo.status
+                            if wo
+                            else ""
+                        )
+                        or ""
+                    ),
+                    "product_required": production_required,
+                    "quality_required": application_required,
+                    "stock_entry": str(se.name),
+                    "stock_entry_docstatus": int(
+                        se.docstatus or 0
+                    ),
+                })
+
+    # --------------------------------------------------------
+    # Get submitted QC inspections.
+    # --------------------------------------------------------
+
+    inspections = _sr_qc_get_inspections(
+        item_code=item_code,
+        category=category,
+    )
+
+    inspection_by_batch = {}
+
+    for row in inspections:
+
+        batch = str(
+            row.get("batch_no") or ""
+        ).strip()
+
+        if not batch:
+            continue
+
+        inspection_by_batch.setdefault(
+            batch,
+            []
+        ).append(row)
+
+    pending = []
+    completed = []
+    seen = set()
+
+    # --------------------------------------------------------
+    # Build final state.
+    # --------------------------------------------------------
+
+    for row in batches:
+
+        batch = row["batch_no"]
+
+        if batch in seen:
+            continue
+
+        seen.add(batch)
+
+        existing = inspection_by_batch.get(
+            batch,
+            []
+        )
+
+        data = dict(row)
+
+        data["category"] = (
+            "Application"
+            if category == "quality"
+            else "Product"
+        )
+
+        data["inspection_count"] = len(existing)
+        data["inspection_name"] = (
+            str(existing[0].get("name") or "")
+            if existing
+            else ""
+        )
+        data["inspection_status"] = (
+            str(existing[0].get("status") or "")
+            if existing
+            else ""
+        )
+        data["qc_submitted"] = bool(existing)
+
+        # Only final-submitted Work Order moves to
+        # Completed Inspection.
+        if (
+            int(row["work_order_docstatus"]) == 1
+            and existing
+        ):
+            completed.append(data)
+        else:
+            pending.append(data)
+
+    return {
+        "success": True,
+        "item_code": item_code,
+        "item_name": _sr_qc_item_name(item_code),
+        "category": category,
+        "pending": pending,
+        "completed": completed,
+    }
+
+
+@frappe.whitelist()
+def sr_qc_coa_pdf(
+    item_code,
+    batch_no,
+    category
+):
+
+    if _is_guest():
+        frappe.throw("Please login")
+
+    item_code = str(item_code or "").strip()
+    batch_no = str(batch_no or "").strip()
+    category = str(category or "").strip().lower()
+
+    if category not in ("product", "quality"):
+        frappe.throw("Invalid QC category.")
+
+    if not item_code:
+        frappe.throw("Item is required.")
+
+    if not batch_no:
+        frappe.throw("Batch is required.")
+
+
+    inspections = _sr_qc_get_inspections(
+        item_code=item_code,
+        batch_no=batch_no,
+        category=category
+    )
+
+    if not inspections:
+        frappe.throw(
+            "Completed QC Inspection not found for batch "
+            + batch_no
+        )
+
+
+    qi_name = inspections[0]["name"]
+
+
+    # COA must be the Quality Inspection Print Format.
+    if not frappe.db.exists(
+        "Print Format",
+        {
+            "name": "COA",
+            "doc_type": "Quality Inspection"
+        }
+    ):
+        frappe.throw(
+            "COA Print Format not found for Quality Inspection."
+        )
+
+
+    html = frappe.get_print(
+        "Quality Inspection",
+        qi_name,
+        print_format="COA",
+        no_letterhead=0
+    )
+
+
+    from frappe.utils.pdf import get_pdf
+
+    pdf = get_pdf(html)
+
+
+    frappe.local.response.filename = (
+        "COA-" + batch_no + ".pdf"
+    )
+
+    frappe.local.response.filecontent = pdf
+    frappe.local.response.type = "download"
+    frappe.local.response.display_content_as = "attachment"
+
+
+
+
+# ============================================================
+# SR CONNECT QC AUTO TEMPLATE FINAL V1
+# ============================================================
+
+def _sr_qc_item_template(item_code):
+    """
+    Primary source:
+        Item.quality_inspection_template
+
+    ERPNext standard Item field.
+    """
+    if not item_code:
+        return ""
+
+    try:
+        return str(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "quality_inspection_template"
+            )
+            or ""
+        ).strip()
+    except Exception:
+        return ""
+
+
+
+def _sr_qc_template_parameters(template_name):
+    template_name = str(template_name or "").strip()
+    if not template_name:
+        return []
+
+    try:
+        rows = frappe.get_all(
+            "Item Quality Inspection Parameter",
+            filters={
+                "parent": template_name,
+                "parenttype": "Quality Inspection Template",
+            },
+            fields=[
+                "name",
+                "idx",
+                "specification",
+                "value",
+                "numeric",
+                "min_value",
+                "max_value",
+                "formula_based_criteria",
+                "acceptance_formula",
+            ],
+            order_by="idx asc",
+            limit_page_length=500,
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "SR QC Template Parameters",
+        )
+        return []
+
+    result = []
+
+    for row in rows:
+        parameter = str(row.get("specification") or "").strip()
+
+        value_raw = row.get("value")
+        value = ""
+        if value_raw is not None:
+            value = str(value_raw).strip()
+
+        min_value = row.get("min_value")
+        max_value = row.get("max_value")
+
+        formula = str(row.get("acceptance_formula") or "").strip()
+
+        numeric = int(row.get("numeric") or 0)
+
+        criteria = ""
+
+        # Formula-based criteria:
+        # reading_value in ("White", "Neutral")
+        # becomes: White, Neutral
+        if formula:
+            matches = re.findall(r"""["']([^"']+)["']""", formula)
+            if matches:
+                criteria = ", ".join(
+                    str(x).strip()
+                    for x in matches
+                    if str(x).strip()
+                )
+
+        # Fixed non-numeric value:
+        # Appearance -> Free Flow Powder
+        # Odour -> None
+        if not criteria and not numeric and value:
+            criteria = value
+
+        result.append({
+            "parameter": parameter,
+            "specification": parameter,
+            "criteria": criteria,
+            "min_value": str(min_value if min_value is not None else "").strip(),
+            "max_value": str(max_value if max_value is not None else "").strip(),
+            "non_numeric": 0 if numeric else 1,
+            "formula_based": int(row.get("formula_based_criteria") or 0),
+            "acceptance_formula": formula,
+            "manual_inspection": 0,
+        })
+
+    return result
+
+
+def _sr_qc_auto_template(
+    item_code,
+    category=""
+):
+    """
+    Determine template automatically.
+
+    Priority:
+
+    1. Item Master template.
+    2. Existing submitted QC for same item/category.
+
+    No BOM is used.
+    """
+
+    item_code = str(
+        item_code or ""
+    ).strip()
+
+    category = str(
+        category or ""
+    ).strip().lower()
+
+    template_name = _sr_qc_item_template(
+        item_code
+    )
+
+    if template_name:
+        return {
+            "name": template_name,
+            "source": "Item"
+        }
+
+    # Fallback for Product/Application separation.
+    try:
+
+        history = _sr_qc_get_inspections(
+            item_code=item_code,
+            category=category
+        )
+
+        if history:
+
+            for row in history:
+
+                name = str(
+                    row.get(
+                        "quality_inspection_template"
+                    )
+                    or ""
+                ).strip()
+
+                if name:
+                    return {
+                        "name": name,
+                        "source": "Quality Inspection"
+                    }
+
+    except Exception:
+        pass
+
+    return {
+        "name": "",
+        "source": ""
+    }
+
+
+def _sr_qc_template_readings(
+    item_code,
+    category=""
+):
+    """
+    Return the exact parameter structure from
+    the automatically selected ERPNext template.
+    """
+
+    selected = _sr_qc_auto_template(
+        item_code=item_code,
+        category=category
+    )
+
+    template_name = selected.get("name") or ""
+
+    if not template_name:
+        return {
+            "template": "",
+            "template_source": "",
+            "readings": []
+        }
+
+    return {
+        "template": template_name,
+        "template_source": selected.get("source") or "",
+        "readings": _sr_qc_template_parameters(
+            template_name
+        )
+    }
+
+
+def _sr_qc_validate_readings(readings):
+    errors = []
+
+    if not isinstance(readings, list):
+        readings = []
+
+    for index, data in enumerate(readings):
+        if not isinstance(data, dict):
+            errors.append({
+                "index": index,
+                "message": "Invalid parameter data."
+            })
+            continue
+
+        parameter = str(
+            data.get("parameter")
+            or ("Parameter " + str(index + 1))
+        ).strip()
+
+        value = str(data.get("value") or "").strip()
+        minimum = str(data.get("min_value") or "").strip()
+        maximum = str(data.get("max_value") or "").strip()
+        criteria = str(data.get("criteria") or "").strip()
+        acceptance = str(
+            data.get("acceptance_criteria")
+            or criteria
+            or ""
+        ).strip()
+
+        # Every parameter must have a value.
+        if not value:
+            errors.append({
+                "index": index,
+                "parameter": parameter,
+                "message": parameter + ": value is required."
+            })
+            continue
+
+        # ---------------------------------------------------------
+        # NON-NUMERIC / ACCEPTANCE-CRITERIA PARAMETERS
+        # ---------------------------------------------------------
+        # Criteria takes priority over min/max. Some non-numeric
+        # template rows arrive with min/max = 0.0, so min/max alone
+        # must NOT make them numeric.
+        if criteria or acceptance:
+            allowed_text = criteria or acceptance
+
+            # Convert formula-style criteria such as:
+            # reading_value in ("White", "Neutral")
+            # into allowed values.
+            formula_values = re.findall(
+                r'["\']([^"\']+)["\']',
+                allowed_text
+            )
+
+            if formula_values:
+                allowed_values = [
+                    str(x).strip()
+                    for x in formula_values
+                    if str(x).strip()
+                ]
+            else:
+                allowed_values = [
+                    str(x).strip()
+                    for x in re.split(r"[,;]+", allowed_text)
+                    if str(x).strip()
+                ]
+
+            # If criteria is a single plain value, keep exact match.
+            if allowed_values:
+                if value not in allowed_values:
+                    errors.append({
+                        "index": index,
+                        "parameter": parameter,
+                        "message": (
+                            parameter
+                            + ": invalid value '"
+                            + value
+                            + "'. Allowed values: "
+                            + ", ".join(allowed_values)
+                            + "."
+                        )
+                    })
+
+            continue
+
+        # ---------------------------------------------------------
+        # NUMERIC PARAMETERS
+        # ---------------------------------------------------------
+        has_numeric_range = bool(minimum or maximum)
+
+        if has_numeric_range:
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                errors.append({
+                    "index": index,
+                    "parameter": parameter,
+                    "message": parameter + ": numeric value required."
+                })
+                continue
+
+            if minimum:
+                try:
+                    min_num = float(minimum)
+                    if numeric_value < min_num:
+                        errors.append({
+                            "index": index,
+                            "parameter": parameter,
+                            "message": (
+                                parameter
+                                + ": value must be at least "
+                                + minimum
+                                + "."
+                            )
+                        })
+                        continue
+                except (TypeError, ValueError):
+                    pass
+
+            if maximum:
+                try:
+                    max_num = float(maximum)
+                    if numeric_value > max_num:
+                        errors.append({
+                            "index": index,
+                            "parameter": parameter,
+                            "message": (
+                                parameter
+                                + ": value must be at most "
+                                + maximum
+                                + "."
+                            )
+                        })
+                        continue
+                except (TypeError, ValueError):
+                    pass
+
+    return errors
+
+@frappe.whitelist()
+def sr_qc_get_batch(
+    item_code,
+    batch_no,
+    category
+):
+    """
+    Final batch loader.
+
+    Batch -> Item -> Item Quality Inspection Template
+         -> Template parameters/specifications/min/max
+
+    Existing draft values are restored when available.
+    Submitted inspection is returned as completed.
+    """
+
+    if _is_guest():
+        frappe.throw("Please login")
+
+    item_code = str(
+        item_code or ""
+    ).strip()
+
+    batch_no = str(
+        batch_no or ""
+    ).strip()
+
+    category = str(
+        category or ""
+    ).strip().lower()
+
+    if category not in (
+        "product",
+        "quality"
+    ):
+        frappe.throw(
+            "Invalid QC category."
+        )
+
+    # --------------------------------------------------------
+    # Completed inspection first
+    # --------------------------------------------------------
+    #
+    # IMPORTANT:
+    # Read the already-saved Quality Inspection directly.
+    #
+    # ERPNext Quality Inspection Reading fields:
+    #
+    #   specification
+    #   value
+    #   numeric
+    #   reading_value
+    #   reading_1
+    #   min_value
+    #   max_value
+    #   formula_based_criteria
+    #   acceptance_formula
+    #   status
+    #
+    # `value` is the acceptance criteria/template value.
+    # `reading_value` / `reading_1` are the actual result.
+    # --------------------------------------------------------
+
+    inspections = _sr_qc_get_inspections(
+        item_code=item_code,
+        batch_no=batch_no,
+        category=category
+    )
+
+    if inspections:
+
+        doc = frappe.get_doc(
+            "Quality Inspection",
+            inspections[0]["name"]
+        )
+
+        readings = []
+
+        for row in doc.get("readings") or []:
+
+            numeric = int(
+                getattr(
+                    row,
+                    "numeric",
+                    0
+                ) or 0
+            )
+
+            reading_value = str(
+                getattr(
+                    row,
+                    "reading_value",
+                    ""
+                ) or ""
+            ).strip()
+
+            reading_1_raw = getattr(
+                row,
+                "reading_1",
+                None
+            )
+
+            reading_1 = ""
+
+            if reading_1_raw not in (
+                None,
+                ""
+            ):
+                reading_1 = str(
+                    reading_1_raw
+                ).strip()
+
+            # Actual result shown in Completed screen.
+            if numeric:
+                actual_value = (
+                    reading_1
+                    or reading_value
+                )
+            else:
+                actual_value = (
+                    reading_value
+                    or reading_1
+                )
+
+            acceptance_value = str(
+                getattr(
+                    row,
+                    "value",
+                    ""
+                ) or ""
+            ).strip()
+
+            acceptance_formula = str(
+                getattr(
+                    row,
+                    "acceptance_formula",
+                    ""
+                ) or ""
+            ).strip()
+
+            formula_based = int(
+                getattr(
+                    row,
+                    "formula_based_criteria",
+                    0
+                ) or 0
+            )
+
+            specification = str(
+                getattr(
+                    row,
+                    "specification",
+                    ""
+                ) or ""
+            ).strip()
+
+            readings.append({
+
+                # Parameter name in ERPNext is
+                # stored in `specification`.
+                "parameter":
+                    specification,
+
+                "specification":
+                    specification,
+
+                # Template acceptance criteria.
+                "criteria":
+                    acceptance_value,
+
+                "value":
+                    acceptance_value,
+
+                # Actual operator result.
+                "actual_value":
+                    actual_value,
+
+                "reading_value":
+                    reading_value,
+
+                "reading_1":
+                    reading_1,
+
+                "numeric":
+                    numeric,
+
+                "non_numeric":
+                    0 if numeric else 1,
+
+                "min_value": str(
+                    getattr(
+                        row,
+                        "min_value",
+                        ""
+                    ) or ""
+                ).strip(),
+
+                "max_value": str(
+                    getattr(
+                        row,
+                        "max_value",
+                        ""
+                    ) or ""
+                ).strip(),
+
+                "formula_based_criteria":
+                    formula_based,
+
+                "acceptance_formula":
+                    acceptance_formula,
+
+                "status": str(
+                    getattr(
+                        row,
+                        "status",
+                        ""
+                    ) or ""
+                ).strip(),
+            })
+
+        return {
+            "success": True,
+            "completed": True,
+
+            "inspection": inspections[0],
+
+            "inspection_name": str(
+                inspections[0].get("name") or ""
+            ),
+
+            "quality_inspection_name": str(
+                inspections[0].get("name") or ""
+            ),
+
+            "qi_name": str(
+                inspections[0].get("name") or ""
+            ),
+
+            "custom_qc_inspection_type": str(
+                inspections[0].get(
+                    "custom_qc_inspection_type"
+                ) or ""
+            ),
+
+            "category": str(
+                inspections[0].get("category")
+                or category
+            ),
+
+            "item_code": item_code,
+            "item_name": _sr_qc_item_name(item_code),
+            "batch_no": batch_no,
+
+            "inspection_type": str(
+                inspections[0].get(
+                    "inspection_type"
+                ) or ""
+            ),
+
+            "status": str(
+                inspections[0].get("status") or ""
+            ),
+
+            "quality_inspection_template": str(
+                inspections[0].get(
+                    "quality_inspection_template"
+                ) or ""
+            ),
+
+            "readings": readings,
+        }
+
+    # --------------------------------------------------------
+    # Existing draft
+    # --------------------------------------------------------
+
+    custom_category = (
+        "Product"
+        if category == "product"
+        else "Application"
+    )
+
+    draft_rows = frappe.get_all(
+        "Quality Inspection",
+        filters={
+            "docstatus": 0,
+            "item_code": item_code,
+            "batch_no": batch_no,
+            "custom_qc_inspection_type":
+                custom_category,
+        },
+        fields=[
+            "name",
+            "quality_inspection_template",
+            "modified",
+        ],
+        order_by="modified desc",
+        limit_page_length=1,
+    )
+
+    # --------------------------------------------------------
+    # Automatically determine template
+    # --------------------------------------------------------
+
+    auto = _sr_qc_template_readings(
+        item_code=item_code,
+        category=category
+    )
+
+    template_name = (
+        auto.get("template")
+        or ""
+    )
+
+    template_readings = (
+        auto.get("readings")
+        or []
+    )
+
+    # --------------------------------------------------------
+    # Restore draft values
+    # --------------------------------------------------------
+
+    if draft_rows:
+
+        draft = frappe.get_doc(
+            "Quality Inspection",
+            draft_rows[0]["name"]
+        )
+
+        readings = []
+
+        for index, template_row in enumerate(
+            template_readings
+        ):
+
+            existing_row = None
+
+            if index < len(
+                draft.get("readings") or []
+            ):
+                existing_row = (
+                    draft.get("readings")[index]
+                )
+
+            value = ""
+
+            if existing_row:
+
+                value = str(
+                    getattr(
+                        existing_row,
+                        "value",
+                        ""
+                    )
+                    or ""
+                )
+
+            row = dict(template_row)
+
+            row["value"] = value
+
+            if existing_row:
+
+                row["status"] = str(
+                    getattr(
+                        existing_row,
+                        "status",
+                        ""
+                    )
+                    or ""
+                )
+
+            else:
+
+                row["status"] = ""
+
+            readings.append(row)
+
+        return {
+            "success": True,
+            "completed": False,
+            "draft": True,
+            "draft_name": str(
+                draft.name
+            ),
+            "item_code": item_code,
+            "item_name": _sr_qc_item_name(item_code),
+            "batch_no": batch_no,
+            "category": category,
+            "quality_inspection_template": (
+                str(
+                    draft.quality_inspection_template
+                    or template_name
+                )
+            ),
+            "template_source": (
+                auto.get("template_source")
+                or ""
+            ),
+            "readings": readings,
+        }
+
+    # --------------------------------------------------------
+    # Fresh pending inspection
+    # --------------------------------------------------------
+
+    return {
+        "success": True,
+        "completed": False,
+        "draft": False,
+        "item_code": item_code,
+        "item_name": _sr_qc_item_name(item_code),
+        "batch_no": batch_no,
+        "category": category,
+        "quality_inspection_template":
+            template_name,
+        "template_source":
+            auto.get("template_source") or "",
+        "readings": [
+            dict(row)
+            for row in template_readings
+        ],
+    }
+
+
+
+    
+def _sr_qc_stock_entry_requirements(work_order_name, item_code, batch_no):
+    """
+    Return Product/Application QC requirements from submitted
+    finished Stock Entries linked to this Work Order and batch.
+    """
+    requirements = {
+        "product": False,
+        "quality": False,
+        "stock_entries": [],
+    }
+
+    if not work_order_name:
+        return requirements
+
+    # Manufacture Stock Entry may still be DRAFT while QC
+    # is being completed. Submitted Stock Entries are also valid.
+    filters = {
+        "docstatus": ["in", [0, 1]],
+        "work_order": work_order_name,
+    }
+    stock_entries = frappe.get_all(
+        "Stock Entry",
+        filters=filters,
+        fields=[
+            "name",
+            "posting_date",
+            "custom_application_inspection_required",
+            "custom_production_inspection_required",
+        ],
+        order_by="posting_date desc, creation desc",
+        limit_page_length=200,
+    )
+
+    for se in stock_entries:
+        try:
+            doc = frappe.get_doc("Stock Entry", se.name)
+        except Exception:
+            continue
+
+        matched_batch = False
+
+        for item in doc.items:
+            if item.item_code != item_code:
+                continue
+
+            if batch_no:
+                batches = str(
+                    getattr(item, "batch_no", "") or ""
+                ).strip()
+
+                if batches == batch_no:
+                    matched_batch = True
+                    break
+
+                # Handle newline/comma separated batch values.
+                batch_list = [
+                    x.strip()
+                    for x in re.split(r"[,\n]+", batches)
+                    if x.strip()
+                ]
+
+                if batch_no in batch_list:
+                    matched_batch = True
+                    break
+            else:
+                matched_batch = True
+                break
+
+        if not matched_batch:
+            continue
+
+        production_required = bool(
+            se.get("custom_production_inspection_required")
+        )
+
+        application_required = bool(
+            se.get("custom_application_inspection_required")
+        )
+
+        if production_required:
+            requirements["product"] = True
+
+        if application_required:
+            requirements["quality"] = True
+
+        requirements["stock_entries"].append({
+            "name": se.name,
+            "product_required": production_required,
+            "quality_required": application_required,
+        })
+
+    return requirements
+
+
+def _sr_qc_required_categories(work_order_name, item_code, batch_no):
+    req = _sr_qc_stock_entry_requirements(
+        work_order_name=work_order_name,
+        item_code=item_code,
+        batch_no=batch_no,
+    )
+
+    return {
+        "product": bool(req.get("product")),
+        "quality": bool(req.get("quality")),
+    }
+
+
+def _sr_qc_work_order_qc_status(work_order_name):
+    """
+    Check every finished Stock Entry of a Work Order and verify
+    all required Product/Application QC inspections are submitted.
+    """
+
+    result = {
+        "required": False,
+        "complete": True,
+        "missing": [],
+        "batches": [],
+    }
+
+    if not work_order_name:
+        return result
+
+    work_order = frappe.db.get_value(
+        "Work Order",
+        work_order_name,
+        [
+            "production_item",
+            "custom_new_batch_id",
+        ],
+        as_dict=True,
+    )
+
+    if not work_order:
+        return result
+
+    item_code = str(
+        work_order.get("production_item") or ""
+    ).strip()
+
+    batch_no = str(
+        work_order.get("custom_new_batch_id") or ""
+    ).strip()
+
+    req = _sr_qc_stock_entry_requirements(
+        work_order_name=work_order_name,
+        item_code=item_code,
+        batch_no=batch_no,
+    )
+
+    product_required = bool(req.get("product"))
+    quality_required = bool(req.get("quality"))
+
+    if not product_required and not quality_required:
+        return result
+
+    result["required"] = True
+
+    checks = [
+        ("product", product_required, "Product Inspection"),
+        ("quality", quality_required, "Quality Inspection"),
+    ]
+
+    for category, required, label in checks:
+        if not required:
+            continue
+
+        result["batches"].append({
+            "batch_no": batch_no,
+            "category": category,
+        })
+
+        submitted = frappe.db.exists(
+            "Quality Inspection",
+            {
+                "docstatus": 1,
+                "item_code": item_code,
+                "batch_no": batch_no,
+                "custom_qc_inspection_type": (
+                    "Product"
+                    if category == "product"
+                    else "Application"
+                ),
+            },
+        )
+
+        if not submitted:
+            result["complete"] = False
+            result["missing"].append({
+                "category": category,
+                "label": label,
+                "batch_no": batch_no,
+            })
+
+    return result
+
+
+def sr_qc_validate_work_order_before_submit(doc, method=None):
+    """
+    Work Order submit gate.
+
+    If finished Stock Entry requires Product/Application inspection,
+    Work Order cannot be submitted until all required QC inspections
+    are submitted.
+    """
+
+    status = _sr_qc_work_order_qc_status(doc.name)
+
+    if not status.get("required"):
+        return
+
+    if status.get("complete"):
+        return
+
+    missing = status.get("missing") or []
+
+    labels = [
+        str(x.get("label") or "")
+        for x in missing
+        if x.get("label")
+    ]
+
+    batch = ""
+    if missing:
+        batch = str(
+            missing[0].get("batch_no") or ""
+        )
+
+    frappe.throw(
+        "QC Inspection is required before submitting this Work Order."
+        + (
+            "\\nBatch: " + batch
+            if batch
+            else ""
+        )
+        + (
+            "\\nPending: " + ", ".join(labels)
+            if labels
+            else ""
+        )
+    )
+
+
+@frappe.whitelist()
+def sr_qc_save(
+    item_code,
+    batch_no,
+    category,
+    readings=None,
+    inspection_type="Outgoing",
+    sample_size=1,
+    quality_inspection_template=""
+):
+
+    if _is_guest():
+        frappe.throw("Please login")
+
+    import json
+
+    item_code = str(
+        item_code or ""
+    ).strip()
+
+    batch_no = str(
+        batch_no or ""
+    ).strip()
+
+    try:
+        sample_size = float(sample_size or 1)
+    except (TypeError, ValueError):
+        sample_size = 1
+
+    if sample_size <= 0:
+        sample_size = 1
+
+    category = str(
+        category or ""
+    ).strip().lower()
+
+    if isinstance(readings, str):
+
+        try:
+            readings = json.loads(readings)
+        except Exception:
+            frappe.throw(
+                "Invalid parameter data."
+            )
+
+    if not isinstance(readings, list):
+        readings = []
+
+    if category not in (
+        "product",
+        "quality"
+    ):
+        frappe.throw(
+            "Invalid QC category."
+        )
+
+    auto = _sr_qc_template_readings(
+        item_code=item_code,
+        category=category
+    )
+
+    template_name = (
+        str(
+            quality_inspection_template
+            or ""
+        ).strip()
+        or str(
+            auto.get("template")
+            or ""
+        ).strip()
+    )
+
+    custom_category = (
+        "Product"
+        if category == "product"
+        else "Application"
+    )
+
+    # --------------------------------------------------------
+    # Existing draft
+    # --------------------------------------------------------
+
+    draft_rows = frappe.get_all(
+        "Quality Inspection",
+        filters={
+            "docstatus": 0,
+            "item_code": item_code,
+            "batch_no": batch_no,
+            "custom_qc_inspection_type":
+                custom_category,
+        },
+        fields=["name"],
+        order_by="modified desc",
+        limit_page_length=1,
+    )
+
+    if draft_rows:
+
+        doc = frappe.get_doc(
+            "Quality Inspection",
+            draft_rows[0]["name"]
+        )
+
+        doc.set("readings", [])
+
+    else:
+
+        doc = frappe.new_doc(
+            "Quality Inspection"
+        )
+
+    doc.item_code = item_code
+
+    # --------------------------------------------------------
+    # ERPNext mandatory Quality Inspection reference fields
+    # --------------------------------------------------------
+
+    work_order_name = frappe.db.get_value(
+        "Work Order",
+        {
+            "production_item": item_code,
+            "custom_new_batch_id": batch_no,
+            "docstatus": ["in", [0, 1]],
+        },
+        "name",
+    )
+
+    reference_stock_entry = None
+
+    if work_order_name:
+        stock_entries = frappe.get_all(
+            "Stock Entry",
+            filters={
+                "work_order": work_order_name,
+                "stock_entry_type": "Manufacture",
+                "docstatus": ["in", [0, 1]],
+            },
+            fields=["name"],
+            order_by="posting_date desc, creation desc",
+            limit_page_length=50,
+        )
+
+        for se in stock_entries:
+            se_doc = frappe.get_doc("Stock Entry", se.name)
+
+            for row in se_doc.items:
+                if row.item_code != item_code:
+                    continue
+
+                batches = str(
+                    getattr(row, "batch_no", "") or ""
+                ).strip()
+
+                if batches == batch_no:
+                    reference_stock_entry = se.name
+                    break
+
+                batch_list = [
+                    x.strip()
+                    for x in re.split(r"[,\n]+", batches)
+                    if x.strip()
+                ]
+
+                if batch_no in batch_list:
+                    reference_stock_entry = se.name
+                    break
+
+            if reference_stock_entry:
+                break
+
+    if doc.meta.has_field("reference_type"):
+        doc.reference_type = "Stock Entry"
+
+    if doc.meta.has_field("reference_name"):
+        if not reference_stock_entry:
+            frappe.throw(
+                f"Manufacture Stock Entry not found for "
+                f"Item {item_code}, Batch {batch_no}"
+            )
+        doc.reference_name = reference_stock_entry
+
+    if doc.meta.has_field("sample_size"):
+        doc.sample_size = float(sample_size or 1)
+
+    if doc.meta.has_field("inspected_by"):
+        doc.inspected_by = frappe.session.user
+    doc.batch_no = batch_no
+    doc.inspection_type = (
+        str(inspection_type or "").strip()
+        or "Outgoing"
+    )
+
+    if template_name:
+        doc.quality_inspection_template = (
+            template_name
+        )
+
+    try:
+        doc.custom_qc_inspection_type = (
+            custom_category
+        )
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # Save values
+    #
+    # Template is the source of truth:
+    # numeric = 1 -> reading_1
+    # numeric = 0 -> reading_value
+    # --------------------------------------------------------
+
+    template_result = _sr_qc_template_readings(
+        item_code,
+        category
+    )
+
+    # _sr_qc_template_readings() returns:
+    # {
+    #     "template": "...",
+    #     "template_source": "...",
+    #     "readings": [...]
+    # }
+    template_rows = (
+        template_result.get("readings", [])
+        if isinstance(template_result, dict)
+        else []
+    )
+
+    template_map = {}
+
+    for tr in template_rows or []:
+        if not isinstance(tr, dict):
+            continue
+
+        key = str(
+            tr.get("parameter")
+            or tr.get("parameter_name")
+            or tr.get("specification")
+            or ""
+        ).strip()
+
+        if key:
+            template_map[key] = tr
+
+    # Rebuild readings cleanly on every SAVE.
+    doc.set("readings", [])
+
+    overall_rejected = False
+
+    for data in readings:
+
+        if not isinstance(data, dict):
+            continue
+
+        parameter = str(
+            data.get("parameter")
+            or data.get("parameter_name")
+            or data.get("specification")
+            or ""
+        ).strip()
+
+        if not parameter:
+            continue
+
+        tr = template_map.get(parameter, {})
+
+        specification = str(
+            tr.get("specification")
+            or parameter
+        ).strip()
+
+        # ----------------------------------------------------
+        # TEMPLATE NUMERIC FLAG
+        # ----------------------------------------------------
+
+        # _sr_qc_template_parameters() exposes this as
+        # non_numeric:
+        #
+        # non_numeric = 1 -> text / Reading Value
+        # non_numeric = 0 -> numeric / Reading 1
+        try:
+            is_numeric = not bool(
+                int(tr.get("non_numeric") or 0)
+            )
+        except Exception:
+            is_numeric = not bool(
+                tr.get("non_numeric")
+            )
+
+        minimum = tr.get("min_value")
+        maximum = tr.get("max_value")
+
+        # _sr_qc_template_parameters() exposes the
+        # template acceptance value as "criteria".
+        template_value = str(
+            tr.get("criteria") or ""
+        ).strip()
+
+        acceptance_formula = str(
+            tr.get("acceptance_formula") or ""
+        ).strip()
+
+        # _sr_qc_template_parameters() exposes this
+        # flag as "formula_based".
+        try:
+            formula_based = bool(
+                int(tr.get("formula_based") or 0)
+            )
+        except Exception:
+            formula_based = bool(
+                tr.get("formula_based")
+            )
+
+        actual_value = str(
+            data.get("value")
+            if data.get("value") is not None
+            else ""
+        ).strip()
+
+        row = doc.append("readings", {})
+
+        # ----------------------------------------------------
+        # TEMPLATE DATA
+        # ----------------------------------------------------
+
+        if row.meta.has_field("specification"):
+            row.specification = specification
+
+        if row.meta.has_field("numeric"):
+            row.numeric = 1 if is_numeric else 0
+
+        if row.meta.has_field("min_value"):
+            try:
+                row.min_value = (
+                    float(minimum)
+                    if minimum not in (None, "")
+                    else 0
+                )
+            except Exception:
+                row.min_value = 0
+
+        if row.meta.has_field("max_value"):
+            try:
+                row.max_value = (
+                    float(maximum)
+                    if maximum not in (None, "")
+                    else 0
+                )
+            except Exception:
+                row.max_value = 0
+
+        if row.meta.has_field("value"):
+            row.value = template_value
+
+        if row.meta.has_field("formula_based_criteria"):
+            row.formula_based_criteria = (
+                1 if formula_based else 0
+            )
+
+        if row.meta.has_field("acceptance_formula"):
+            row.acceptance_formula = acceptance_formula
+
+        # ----------------------------------------------------
+        # ACTUAL READING
+        #
+        # Text -> reading_value
+        # Numeric -> reading_1
+        # ----------------------------------------------------
+
+        if is_numeric:
+
+            if row.meta.has_field("reading_1"):
+                row.reading_1 = actual_value
+
+            if row.meta.has_field("reading_value"):
+                row.reading_value = None
+
+        else:
+
+            if row.meta.has_field("reading_value"):
+                row.reading_value = actual_value
+
+            if row.meta.has_field("reading_1"):
+                row.reading_1 = None
+
+        # ----------------------------------------------------
+        # VALIDATION
+        # ----------------------------------------------------
+
+        accepted = True
+
+        if not actual_value:
+            accepted = False
+
+        elif is_numeric:
+
+            try:
+                number = float(actual_value)
+
+                if minimum not in (None, ""):
+                    if number < float(minimum):
+                        accepted = False
+
+                if maximum not in (None, ""):
+                    if number > float(maximum):
+                        accepted = False
+
+            except Exception:
+                accepted = False
+
+        elif formula_based and acceptance_formula:
+
+            import re
+
+            allowed_values = re.findall(
+                r"""["']([^"']+)["']""",
+                acceptance_formula
+            )
+
+            if allowed_values:
+                accepted = (
+                    actual_value in allowed_values
+                )
+            else:
+                accepted = False
+
+        elif template_value:
+
+            accepted = (
+                actual_value.casefold()
+                == template_value.casefold()
+            )
+
+        # ----------------------------------------------------
+        # ROW STATUS
+        # ----------------------------------------------------
+
+        if row.meta.has_field("status"):
+            row.status = (
+                "Accepted"
+                if accepted
+                else "Rejected"
+            )
+
+        if not accepted:
+            overall_rejected = True
+
+    # --------------------------------------------------------
+    # OVERALL STATUS
+    # --------------------------------------------------------
+
+    if doc.meta.has_field("status"):
+        doc.status = (
+            "Rejected"
+            if overall_rejected
+            else "Accepted"
+        )
+
+    if doc.is_new():
+
+        doc.insert(
+            ignore_permissions=True
+        )
+
+    else:
+
+        doc.save(
+            ignore_permissions=True
+        )
+
+
+    frappe.db.commit()
+
+    return {
+        "success": True,
+        "name": str(doc.name),
+        "batch_no": batch_no,
+        "item_code": item_code,
+        "category": category,
+        "quality_inspection_template":
+            template_name,
+        "message":
+            "✓ QC Inspection submitted successfully.",
+    }
+
+
+
+
+# ============================================================
+# SR CONNECT - DISTRIBUTOR COA SEARCH
+# SOURCE OF TRUTH:
+#   Batch DocType -> Quality Inspection
+# Work Order is NOT required.
+# ============================================================
+
+@frappe.whitelist()
+def sr_coa_search_batch(batch_no):
+    batch_no = str(batch_no or "").strip()
+
+    if not batch_no:
+        frappe.throw("Please enter Batch No.")
+
+    # --------------------------------------------------------
+    # 1. Batch DocType is the ONLY batch source.
+    # --------------------------------------------------------
+    batch_rows = frappe.get_all(
+        "Batch",
+        filters={
+            "name": batch_no,
+        },
+        fields=[
+            "name",
+            "item",
+            "batch_id",
+            "creation",
+        ],
+        limit_page_length=1,
+    )
+
+    if not batch_rows:
+        return {
+            "success": True,
+            "found": False,
+            "batch_no": batch_no,
+            "item_code": "",
+            "item_name": "",
+            "quality_inspections": [],
+        }
+
+    batch = batch_rows[0]
+
+    item_code = (
+        str(batch.get("item") or "").strip()
+        or str(batch.get("item_code") or "").strip()
+    )
+
+    item_name = ""
+
+    if item_code:
+        item_name = str(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "item_name",
+            )
+            or ""
+        ).strip()
+
+    # --------------------------------------------------------
+    # 2. Read completed submitted Quality Inspections
+    #    ONLY for this Batch.
+    #
+    #    No Work Order dependency.
+    # --------------------------------------------------------
+    qi_rows = frappe.get_all(
+        "Quality Inspection",
+        filters={
+            "batch_no": batch_no,
+            "docstatus": 1,
+            "status": "Accepted",
+        },
+        fields=[
+            "name",
+            "item_code",
+            "batch_no",
+            "custom_qc_inspection_type",
+            "quality_inspection_template",
+            "inspection_type",
+            "status",
+            "creation",
+        ],
+        order_by="creation desc",
+        limit_page_length=50,
+    )
+
+    inspections = []
+
+    for row in qi_rows:
+
+        custom_category = str(
+            row.get("custom_qc_inspection_type") or ""
+        ).strip()
+
+        if custom_category == "Product":
+            category = "product"
+            label = "Product COA"
+
+        elif custom_category == "Application":
+            category = "quality"
+            label = "Application COA"
+
+        else:
+            # Do not expose unrelated QI records.
+            continue
+
+        inspections.append({
+            "name": str(row.get("name") or ""),
+            "item_code": str(
+                row.get("item_code")
+                or item_code
+                or ""
+            ),
+            "batch_no": batch_no,
+            "category": category,
+            "label": label,
+            "inspection_type": str(
+                row.get("inspection_type") or ""
+            ),
+            "template": str(
+                row.get("quality_inspection_template") or ""
+            ),
+            "status": str(
+                row.get("status") or ""
+            ),
+        })
+
+    return {
+        "success": True,
+        "found": True,
+        "batch_no": batch_no,
+        "item_code": item_code,
+        "item_name": item_name,
+        "quality_inspections": inspections,
+    }
+
+
+# =========================================================
+# SR CONNECT - DISTRIBUTOR COA SEARCH
+# Source of truth: ERPNext Batch
+# =========================================================
+
+@frappe.whitelist()
+def sr_coa_search_batch(batch_no, product_coa=1, application_coa=0):
+    batch_no = str(batch_no or "").strip()
+
+    if not batch_no:
+        frappe.throw("Batch No is required.")
+
+    # -----------------------------------------------------
+    # 1. Batch is the source of truth.
+    # Work Order is NOT used here.
+    # -----------------------------------------------------
+    batch_rows = frappe.get_all(
+        "Batch",
+        filters={"name": batch_no},
+        fields=["name", "item", "creation"],
+        limit_page_length=1,
+    )
+
+    if not batch_rows:
+        return {
+            "success": True,
+            "found": False,
+            "batch_no": batch_no,
+            "message": "Batch not found."
+        }
+
+    batch = batch_rows[0]
+
+    item_code = str(batch.get("item") or "").strip()
+
+    item_name = ""
+    if item_code:
+        item_name = str(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "item_name"
+            ) or ""
+        ).strip()
+
+    product_enabled = str(product_coa).lower() in (
+        "1", "true", "yes", "on"
+    )
+
+    application_enabled = str(application_coa).lower() in (
+        "1", "true", "yes", "on"
+    )
+
+    # -----------------------------------------------------
+    # 2. Get completed / accepted QI records for this Batch.
+    # -----------------------------------------------------
+    qi_rows = frappe.get_all(
+        "Quality Inspection",
+        filters={
+            "batch_no": batch_no,
+            "docstatus": 1,
+            "status": "Accepted",
+        },
+        fields=[
+            "name",
+            "item_code",
+            "batch_no",
+            "custom_qc_inspection_type",
+            "quality_inspection_template",
+            "inspection_type",
+            "status",
+            "creation",
+        ],
+        order_by="creation desc",
+        limit_page_length=50,
+    )
+
+    inspections = []
+
+    for row in qi_rows:
+
+        category = str(
+            row.get("custom_qc_inspection_type") or ""
+        ).strip()
+
+        # Product Inspection
+        if category == "Product":
+
+            if not product_enabled:
+                continue
+
+            inspections.append({
+                "name": row.name,
+                "qi_name": row.name,
+                "category": "product",
+                "label": "Product COA",
+                "item_code": row.item_code,
+                "batch_no": row.batch_no,
+                "quality_inspection_template":
+                    row.quality_inspection_template,
+                "inspection_type":
+                    row.inspection_type,
+                "status": row.status,
+                "creation": row.creation,
+            })
+
+        # Application / Quality Inspection
+        elif category == "Application":
+
+            if not application_enabled:
+                continue
+
+            inspections.append({
+                "name": row.name,
+                "qi_name": row.name,
+                "category": "application",
+                "label": "Application COA",
+                "item_code": row.item_code,
+                "batch_no": row.batch_no,
+                "quality_inspection_template":
+                    row.quality_inspection_template,
+                "inspection_type":
+                    row.inspection_type,
+                "status": row.status,
+                "creation": row.creation,
+            })
+
+    return {
+        "success": True,
+        "found": True,
+        "batch_no": batch_no,
+        "item_code": item_code,
+        "item_name": item_name,
+        "product_coa": product_enabled,
+        "application_coa": application_enabled,
+        "quality_inspections": inspections,
+    }

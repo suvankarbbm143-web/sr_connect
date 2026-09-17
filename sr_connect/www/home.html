@@ -4006,7 +4006,52 @@ button{-webkit-tap-highlight-color:transparent}
     <span class="text-slate-500">›</span>
   </button>
 
-  <button onclick="loadList('Stock Balance')" class="w-full p-4 bg-white border rounded-2xl flex items-center justify-between shadow-sm">
+  <button onclick="window.openSRQCInspection()" class="w-full p-4 bg-white border rounded-2xl flex items-center justify-between mb-3 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center font-bold text-indigo-700">QC</div>
+      <div class="text-left">
+        <span class="font-bold text-sm">QC Inspection</span>
+        <div class="text-[10px] text-slate-400 mt-1">Product / Quality Inspection</div>
+      </div>
+    </div>
+    <span class="text-slate-500">›</span>
+  </button>
+
+
+  <!-- SR PRODUCT COA -->
+  <button
+    onclick="window.srOpenProductCOA()"
+    class="w-full p-4 bg-white border rounded-2xl
+           flex items-center justify-between mb-3 shadow-sm"
+  >
+    <div class="flex items-center gap-3">
+
+      <div
+        class="w-10 h-10 bg-slate-900 text-white
+               rounded-xl flex items-center justify-center
+               font-bold"
+      >
+        COA
+      </div>
+
+      <div class="text-left">
+        <span class="font-bold text-sm">
+          SR PRODUCT COA
+        </span>
+
+        <div class="text-[10px] text-slate-400 mt-1">
+          Search Product Certificate of Analysis
+        </div>
+      </div>
+
+    </div>
+
+    <span class="text-slate-500">›</span>
+  </button>
+
+
+  <button onclick="loadList('Stock Balance')"
+ class="w-full p-4 bg-white border rounded-2xl flex items-center justify-between shadow-sm">
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 bg-teal-100 rounded-xl flex items-center justify-center font-bold text-teal-700">SB</div>
       <span class="font-bold text-sm">Stock Balance</span>
@@ -4253,6 +4298,31 @@ button{-webkit-tap-highlight-color:transparent}
 </section>
 
 
+<!-- =========================================================
+     SR CONNECT QC INSPECTION UI V1
+     ========================================================= -->
+
+<section
+  id="qcInspectionView"
+  class="hidden flex-1 bg-slate-50 p-4 overflow-y-auto"
+>
+  <div id="qcInspectionContent"></div>
+</section>
+
+<!-- =========================================================
+     SR PRODUCT COA - STANDALONE VIEW
+     NOT PART OF QC INSPECTION
+     ========================================================= -->
+
+<section
+  id="srProductCOAView"
+  class="hidden flex-1 bg-slate-50 p-4 overflow-y-auto"
+>
+  <div id="srProductCOAContent"></div>
+</section>
+
+
+
 <!-- WORK ORDER DETAIL -->
 <section id="workOrderView" class="hidden flex-1 bg-slate-50 p-4">
   <div id="workOrderContent"></div>
@@ -4328,6 +4398,7 @@ function hideAll(){
     "jobView",
     "workOrderView",
     "createWorkOrderView",
+    "qcInspectionView",
     "profileView"
   ].forEach(id=>{
     const el=document.getElementById(id);
@@ -5278,6 +5349,49 @@ function goBack(){
   }
 
 
+  if(
+    currentView === "qcBatchDetail"
+  ){
+
+    srQCOpenItem(
+      srQCState.item.item_code,
+      srQCState.item.item_name
+    );
+
+    return;
+  }
+
+  if(
+    currentView === "qcBatches"
+  ){
+
+    srQCSelectCategory(
+      srQCState.category
+    );
+
+    return;
+  }
+
+  if(
+    currentView === "qcItems"
+  ){
+
+    openSRQCInspection();
+
+    return;
+  }
+
+  if(
+    currentView === "qcHome"
+  ){
+
+    showManufacturing();
+
+    return;
+  }
+
+
+
   /*
    * Browser history is the source of truth.
    *
@@ -5482,6 +5596,2409 @@ async function installApp(){
 
   alert("Browser menu থেকে Add to Home Screen / Install App দিন।");
 }
+
+
+/* =========================================================
+   SR CONNECT QC INSPECTION UI V1
+   ========================================================= */
+
+window.srQCState = {
+  category: "",
+  item: null,
+  batch: null
+};
+
+
+window.openSRQCInspection = function(){
+
+  hideAll();
+
+  const box =
+    document.getElementById(
+      "qcInspectionView"
+    );
+
+  if(!box){
+    return;
+  }
+
+  box.classList.remove("hidden");
+
+  currentView =
+    "qcHome";
+
+  document.getElementById(
+    "pageTitle"
+  ).innerText =
+    "QC Inspection";
+
+  document.getElementById(
+    "pageSub"
+  ).innerText =
+    "Select Inspection Type";
+
+  document.getElementById(
+    "backBtn"
+  ).classList.remove("hidden");
+
+  srQCRenderHome();
+};
+
+
+async function srQCRenderHome(){
+
+  const box =
+    document.getElementById(
+      "qcInspectionContent"
+    );
+
+  if(!box){
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="space-y-3">
+      <button
+        onclick="srQCSelectCategory('product')"
+        class="w-full bg-white border rounded-2xl p-4 text-left shadow-sm"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-bold text-sm">
+              Product Inspection
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">
+              Product QC parameters
+            </div>
+          </div>
+          <span class="text-indigo-600 font-bold">›</span>
+        </div>
+      </button>
+
+      <button
+        onclick="srQCSelectCategory('quality')"
+        class="w-full bg-white border rounded-2xl p-4 text-left shadow-sm"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-bold text-sm">
+              Quality Inspection
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">
+              Application / Quality parameters
+            </div>
+          </div>
+          <span class="text-indigo-600 font-bold">›</span>
+        </div>
+      </button>
+
+    </div>
+  `;
+}
+
+
+async function srQCSelectCategory(category){
+
+  srQCState.category =
+    category === "product"
+      ? "product"
+      : "quality";
+
+  currentView = "qcItems";
+
+  document.getElementById("pageTitle").innerText =
+    category === "product"
+      ? "Product Inspection"
+      : "Quality Inspection";
+
+  document.getElementById("pageSub").innerText =
+    "Select Item";
+
+  const box =
+    document.getElementById(
+      "qcInspectionContent"
+    );
+
+  box.innerHTML = `
+    <div class="space-y-3">
+
+      <!-- Work Order style search -->
+      <input
+        id="srQCItemSearch"
+        type="search"
+        autocomplete="off"
+        class="w-full p-4 bg-white border rounded-2xl text-sm outline-none shadow-sm"
+        placeholder="Search Item Name..."
+      >
+
+      <input
+        id="srQCBatchSearch"
+        type="search"
+        autocomplete="off"
+        disabled
+        class="w-full p-4 bg-white border rounded-2xl text-sm outline-none shadow-sm"
+        placeholder="Batch No. (Select Item)"
+      >
+
+      <div
+        id="srQCItemList"
+        class="space-y-2"
+      >
+        <div class="bg-white border rounded-2xl p-4">
+          <div class="text-xs text-slate-400">
+            Loading items...
+          </div>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_qc_get_home"
+      );
+
+    const items =
+      Array.isArray(result.items)
+        ? result.items
+        : [];
+
+
+    const available =
+      items.filter(function(item){
+
+        return Array.isArray(item.categories)
+          &&
+          item.categories.includes(
+            srQCState.category
+          );
+
+      });
+
+
+    const list =
+      document.getElementById(
+        "srQCItemList"
+      );
+
+    const search =
+      document.getElementById(
+        "srQCItemSearch"
+      );
+
+
+    function renderItems(){
+
+      const query =
+        String(
+          search.value || ""
+        )
+        .trim()
+        .toLowerCase();
+
+
+      const filtered =
+        available.filter(function(item){
+
+          const name =
+            String(
+              item.item_name || ""
+            ).toLowerCase();
+
+          const code =
+            String(
+              item.item_code || ""
+            ).toLowerCase();
+
+          return (
+            !query
+            ||
+            name.includes(query)
+            ||
+            code.includes(query)
+          );
+
+        });
+
+
+      if(!filtered.length){
+
+        list.innerHTML = `
+          <div class="bg-white border rounded-2xl p-5 text-center">
+            <div class="font-bold text-sm">
+              No Item Found
+            </div>
+          </div>
+        `;
+
+        return;
+      }
+
+
+      list.innerHTML =
+        filtered.map(function(item){
+
+          return `
+            <button
+              onclick="srQCOpenItem(
+                '${escapeAttr(item.item_code)}',
+                '${escapeAttr(item.item_name)}'
+              )"
+              class="w-full bg-white border rounded-2xl p-4 text-left shadow-sm"
+            >
+
+              <div class="flex items-center justify-between">
+
+                <div>
+
+                  <div class="font-bold text-sm">
+                    ${escapeHtml(
+                      item.item_name
+                      || item.item_code
+                    )}
+                  </div>
+
+                  <div class="text-[10px] text-slate-400 mt-1">
+                    ${escapeHtml(
+                      item.item_code || ""
+                    )}
+                  </div>
+
+                </div>
+
+                <span class="text-indigo-600 font-bold">
+                  ›
+                </span>
+
+              </div>
+
+            </button>
+          `;
+
+        }).join("");
+
+    }
+
+
+    /*
+     * Search only changes the list.
+     * The input itself is NEVER recreated.
+     */
+    search.addEventListener(
+      "input",
+      renderItems
+    );
+
+
+    /*
+     * Empty search => show all items immediately.
+     */
+    renderItems();
+
+
+  }catch(e){
+
+    document.getElementById(
+      "srQCItemList"
+    ).innerHTML = `
+      <div class="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs text-rose-600">
+        ${escapeHtml(
+          e.message ||
+          "Unable to load QC Items"
+        )}
+      </div>
+    `;
+  }
+}
+
+async function srQCOpenItem(
+  itemCode,
+  itemName
+){
+
+  srQCState.item = {
+    item_code: itemCode,
+    item_name: itemName
+  };
+
+  currentView = "qcBatches";
+
+
+  document.getElementById("pageTitle").innerText =
+    itemName || itemCode;
+
+  document.getElementById("pageSub").innerText =
+    "Pending / Completed";
+
+
+  const box =
+    document.getElementById(
+      "qcInspectionContent"
+    );
+
+
+  /*
+   * ==========================================================
+   * STOCK ENTRY STYLE
+   *
+   * Only ONE tab/list is visible at a time.
+   * ==========================================================
+   */
+
+  box.innerHTML = `
+
+    <div class="space-y-3">
+
+      <!-- Batch Search -->
+      <input
+        id="srQCBatchSearch"
+        type="search"
+        autocomplete="off"
+        class="w-full p-4 bg-white border rounded-2xl text-sm outline-none shadow-sm"
+        placeholder="Search Batch No..."
+      >
+
+
+      <!-- Tabs -->
+      <div
+        class="bg-white border rounded-2xl p-1 flex gap-1"
+      >
+
+        <button
+          id="srQCPendingTab"
+          type="button"
+          class="flex-1 py-3 rounded-xl text-xs font-bold"
+          onclick="srQCSwitchInspectionTab('pending')"
+        >
+          PENDING INSPECTION
+        </button>
+
+
+        <button
+          id="srQCCompletedTab"
+          type="button"
+          class="flex-1 py-3 rounded-xl text-xs font-bold"
+          onclick="srQCSwitchInspectionTab('completed')"
+        >
+          COMPLETED INSPECTION
+        </button>
+
+      </div>
+
+
+      <!-- Count -->
+      <div
+        id="srQCTabCount"
+        class="text-xs text-slate-500 px-1"
+      ></div>
+
+
+      <!-- ONLY ONE LIST -->
+      <div
+        id="srQCTabBatchList"
+        class="space-y-2"
+      >
+        <div class="bg-white border rounded-2xl p-4 text-xs text-slate-400">
+          Loading...
+        </div>
+      </div>
+
+    </div>
+
+  `;
+
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_qc_get_item_batches"
+        + "?item_code="
+        + encodeURIComponent(itemCode)
+        + "&category="
+        + encodeURIComponent(
+            srQCState.category
+          )
+      );
+
+
+    const pending =
+      Array.isArray(result.pending)
+        ? result.pending
+        : [];
+
+
+    let completed =
+      Array.isArray(result.completed)
+        ? result.completed
+        : [];
+
+
+    /*
+     * Completed Inspection:
+     * Also load the opposite QC category so that
+     * Product and Application completed batches
+     * can both appear in the same completed list.
+     *
+     * Pending list remains unchanged.
+     */
+    const currentCategory =
+      String(
+        srQCState.category || ""
+      ).trim().toLowerCase();
+
+    const oppositeCategory =
+      currentCategory === "product"
+        ? "quality"
+        : "product";
+
+    try{
+
+      const oppositeResult =
+        await api(
+          "/api/method/sr_connect.www.home.sr_qc_get_item_batches"
+          + "?item_code="
+          + encodeURIComponent(itemCode)
+          + "&category="
+          + encodeURIComponent(oppositeCategory)
+        );
+
+      const oppositeCompleted =
+        Array.isArray(oppositeResult.completed)
+          ? oppositeResult.completed
+          : [];
+
+      completed =
+        completed.concat(
+          oppositeCompleted
+        );
+
+    }catch(e){
+
+      console.warn(
+        "Unable to load opposite completed QC category",
+        e
+      );
+
+    }
+
+
+    /*
+     * Default = Pending
+     */
+    window.srQCInspectionTab =
+      "pending";
+
+
+    const search =
+      document.getElementById(
+        "srQCBatchSearch"
+      );
+
+
+    /*
+     * Store locally so tab switching
+     * does NOT call API again.
+     */
+    window.srQCTabData = {
+      pending: pending,
+      completed: completed
+    };
+
+
+    /*
+     * Keep Product/Application COA switch state
+     * for each individual completed batch.
+     */
+    if(!window.srQCCOAState){
+      window.srQCCOAState = {};
+
+try{
+  const savedSRQCCOAState =
+    localStorage.getItem("srQCCOAState");
+
+  if(savedSRQCCOAState){
+    window.srQCCOAState =
+      JSON.parse(savedSRQCCOAState) || {};
+  }
+}catch(e){}
+    }
+
+
+    function render(){
+
+      const tab =
+        window.srQCInspectionTab === "completed"
+          ? "completed"
+          : "pending";
+
+
+      const rows =
+        window.srQCTabData[tab] || [];
+
+
+      const query =
+        String(
+          search.value || ""
+        )
+        .trim()
+        .toLowerCase();
+
+
+      const filtered =
+        rows.filter(
+          function(row){
+
+            return (
+              !query
+              ||
+              String(
+                row.batch_no || ""
+              )
+              .toLowerCase()
+              .includes(query)
+            );
+
+          }
+        );
+
+
+      const list =
+        document.getElementById(
+          "srQCTabBatchList"
+        );
+
+
+      const count =
+        document.getElementById(
+          "srQCTabCount"
+        );
+
+
+      /*
+       * Tab active design
+       */
+      const pendingTab =
+        document.getElementById(
+          "srQCPendingTab"
+        );
+
+
+      const completedTab =
+        document.getElementById(
+          "srQCCompletedTab"
+        );
+
+
+      pendingTab.className =
+        "flex-1 py-3 rounded-xl text-xs font-bold "
+        +
+        (
+          tab === "pending"
+            ? "bg-slate-900 text-white"
+            : "bg-transparent text-slate-600"
+        );
+
+
+      completedTab.className =
+        "flex-1 py-3 rounded-xl text-xs font-bold "
+        +
+        (
+          tab === "completed"
+            ? "bg-slate-900 text-white"
+            : "bg-transparent text-slate-600"
+        );
+
+
+      count.innerText =
+        (
+          tab === "pending"
+            ? "Pending Inspection: "
+            : "Completed Inspection: "
+        )
+        +
+        rows.length
+        +
+        " Batch";
+
+
+      if(!filtered.length){
+
+        list.innerHTML = `
+
+          <div
+            class="bg-white border rounded-2xl p-5 text-center"
+          >
+
+            <div class="font-bold text-sm">
+              No batch found
+            </div>
+
+            <div class="text-[10px] text-slate-400 mt-1">
+              ${
+                tab === "pending"
+                  ? "No pending inspection batch."
+                  : "No completed inspection batch."
+              }
+            </div>
+
+          </div>
+
+        `;
+
+        return;
+      }
+
+
+      /*
+       * SINGLE COLUMN
+       */
+      list.innerHTML =
+        filtered.map(
+          function(row){
+
+            const batchNo =
+              row.batch_no || "";
+
+            const rowCategory =
+              String(
+                row.category || row.inspection_category || ""
+              ).trim().toLowerCase();
+
+            const isApplication =
+              rowCategory === "application"
+              || rowCategory === "quality";
+
+            const coaCategory =
+              isApplication
+                ? "application"
+                : "product";
+
+            const coaLabel =
+              isApplication
+                ? "APPLICATION COA"
+                : "PRODUCT COA";
+
+            const coaKey =
+              coaCategory + ":" + batchNo;
+
+            const coaOn =
+              Object.prototype.hasOwnProperty.call(
+                window.srQCCOAState,
+                coaKey
+              )
+                ? window.srQCCOAState[coaKey]
+                : !isApplication;
+
+
+            if(tab === "pending"){
+
+              return `
+
+                <button
+                  type="button"
+                  onclick="srQCOpenBatch(
+                    '${escapeAttr(batchNo)}'
+                  )"
+                  class="w-full bg-white border rounded-2xl p-4 text-left shadow-sm"
+                >
+
+                  <div class="flex items-center justify-between">
+
+                    <div>
+
+                      <div class="font-bold text-sm">
+                        ${escapeHtml(batchNo)}
+                      </div>
+
+                      <div class="text-[10px] text-slate-400 mt-1">
+                        ${escapeHtml(
+                          row.work_order || ""
+                        )}
+                      </div>
+
+                    </div>
+
+                    <span class="text-amber-600 font-bold">
+                      ›
+                    </span>
+
+                  </div>
+
+                </button>
+
+              `;
+
+            }
+
+
+            /*
+             * COMPLETED
+             * Batch click + COA button
+             */
+
+            return `
+
+              <div
+                class="w-full bg-white border rounded-2xl p-4 shadow-sm"
+              >
+
+                <div
+                  class="flex items-center gap-3"
+                >
+
+                  <button
+                    type="button"
+                    onclick="srQCOpenBatch(
+                      '${escapeAttr(batchNo)}'
+                    )"
+                    class="flex-1 text-left min-w-0"
+                  >
+
+                    <div class="font-bold text-sm">
+                      ${escapeHtml(batchNo)}
+                    </div>
+
+                    <div class="text-[10px] text-slate-400 mt-1">
+                      ${escapeHtml(
+                        row.inspection_name || ""
+                      )}
+                    </div>
+
+                  </button>
+
+
+                  <div class="flex items-center gap-2">
+
+                    <span class="text-[9px] font-bold text-slate-500">
+                      ${coaLabel}
+                    </span>
+
+                    <button
+                      type="button"
+                      data-batch="${escapeAttr(batchNo)}"
+                      data-coa-category="${escapeAttr(coaCategory)}"
+                      aria-label="${coaLabel}"
+                      aria-pressed="${coaOn ? "true" : "false"}"
+                      onclick="event.stopPropagation(); srQCToggleBatchCOA(this)"
+                      class="relative w-11 h-6 rounded-full transition ${
+                        coaOn
+                          ? "bg-slate-900"
+                          : "bg-slate-300"
+                      }"
+                    >
+
+                      <span
+                        class="absolute top-1 ${
+                          coaOn
+                            ? "left-6"
+                            : "left-1"
+                        } w-4 h-4 bg-white rounded-full shadow transition"
+                      ></span>
+
+                    </button>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            `;
+
+          }
+        ).join("");
+
+    }
+
+
+    /*
+     * Tab switch
+     */
+    window.srQCSwitchInspectionTab =
+      function(tab){
+
+        window.srQCInspectionTab =
+          tab === "completed"
+            ? "completed"
+            : "pending";
+
+        render();
+      };
+
+
+    /*
+     * Search DOES NOT recreate input.
+     */
+    search.addEventListener(
+      "input",
+      render
+    );
+
+
+    /*
+     * Initial:
+     * Pending only.
+     */
+    render();
+
+
+  }catch(error){
+
+    document.getElementById(
+      "srQCTabBatchList"
+    ).innerHTML = `
+
+      <div
+        class="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs text-rose-600"
+      >
+        ${escapeHtml(
+          error.message ||
+          "Unable to load batches."
+        )}
+      </div>
+
+    `;
+
+  }
+
+}
+
+
+
+/* =========================================================
+   SR QC AUTO TEMPLATE FRONTEND FINAL V1
+   ========================================================= */
+
+function srQCToggleBatchCOA(button){
+
+  const isOn =
+    button.getAttribute("aria-pressed") === "true";
+
+  const newState =
+    !isOn;
+
+  const batch =
+    String(
+      button.dataset.batch || ""
+    ).trim();
+
+  const category =
+    String(
+      button.dataset.coaCategory || ""
+    ).trim().toLowerCase();
+
+  if(!window.srQCCOAState){
+    window.srQCCOAState = {};
+  }
+
+  if(batch && category){
+
+    const key =
+      category + ":" + batch;
+
+    window.srQCCOAState[key] =
+      newState;
+
+    try{
+      localStorage.setItem(
+        "srQCCOAState",
+        JSON.stringify(
+          window.srQCCOAState
+        )
+      );
+    }catch(e){}
+
+  }
+
+  button.setAttribute(
+    "aria-pressed",
+    String(newState)
+  );
+
+  const knob =
+    button.querySelector("span");
+
+  if(newState){
+
+    button.className =
+      "relative w-11 h-6 rounded-full transition bg-slate-900";
+
+    if(knob){
+
+      knob.className =
+        "absolute top-1 left-6 w-4 h-4 bg-white rounded-full shadow transition";
+
+    }
+
+  }else{
+
+    button.className =
+      "relative w-11 h-6 rounded-full transition bg-slate-300";
+
+    if(knob){
+
+      knob.className =
+        "absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition";
+
+    }
+
+  }
+
+}
+
+async function srQCOpenBatch(batchNo){
+
+  srQCState.batch = batchNo;
+
+  const box =
+    document.getElementById(
+      "qcInspectionContent"
+    );
+
+  if(!box){
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="bg-white border rounded-2xl p-4">
+      <div class="text-xs text-slate-400">
+        Loading QC template...
+      </div>
+    </div>
+  `;
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_qc_get_batch"
+        + "?item_code="
+        + encodeURIComponent(
+            srQCState.item.item_code
+          )
+        + "&batch_no="
+        + encodeURIComponent(
+            batchNo
+          )
+        + "&category="
+        + encodeURIComponent(
+            srQCState.category
+          )
+      );
+
+    const completed =
+      !!result.completed;
+
+    const readings =
+      Array.isArray(result.readings)
+        ? result.readings
+        : [];
+
+    srQCState.template =
+      result.quality_inspection_template
+      || "";
+
+    box.innerHTML = `
+
+      <div class="space-y-3">
+
+        <div class="bg-white border rounded-2xl p-4 shadow-sm">
+
+          <div class="flex items-start justify-between gap-3">
+
+            <div>
+
+              <div class="text-[10px] text-slate-400">
+                BATCH NO
+              </div>
+
+              <div class="font-bold text-base mt-1">
+                ${escapeHtml(batchNo)}
+              </div>
+
+              <div class="text-[10px] text-slate-400 mt-1">
+                ${escapeHtml(
+                  result.item_name
+                  || srQCState.item.item_name
+                  || srQCState.item.item_code
+                )}
+              </div>
+
+            </div>
+
+            ${
+              result.quality_inspection_template
+              ? `
+                <div class="text-right">
+                  <div class="text-[9px] text-slate-400">
+                    TEMPLATE
+                  </div>
+                  <div class="text-[10px] font-bold">
+                    ${escapeHtml(
+                      result.quality_inspection_template
+                    )}
+                  </div>
+                </div>
+              `
+              : ""
+            }
+
+          </div>
+
+          ${
+            completed
+            ? `
+              <div class="flex justify-end mt-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onclick="srQCPrintCompleted()"
+                  class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-sm active:scale-95"
+                  title="Print / Download COA"
+                >
+                  <span style="font-size:18px;line-height:1">🖨️</span>
+                  <span>PRINT</span>
+                </button>
+              </div>
+            `
+            : ""
+          }
+
+
+        </div>
+
+
+        <!-- =====================================================
+             ERPNext Quality Inspection fields
+             ===================================================== -->
+
+        <div class="bg-white border rounded-2xl p-4 shadow-sm">
+
+          <div class="font-bold text-sm">
+            Inspection Details
+          </div>
+
+          <div class="space-y-3 mt-4">
+
+            ${
+              completed
+              ?
+              `
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
+                    Sample Size
+                  </label>
+
+                  <div
+                    class="w-full p-3 rounded-xl bg-slate-50 border text-xs font-semibold text-slate-700"
+                  >
+                    ${escapeHtml(
+                      String(
+                        result.sample_size
+                        || "-"
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
+                    Inspection Type
+                  </label>
+
+                  <div
+                    class="w-full p-3 rounded-xl bg-slate-50 border text-xs font-semibold text-slate-700"
+                  >
+                    ${escapeHtml(
+                      String(
+                        result.inspection_type
+                        || "-"
+                      )
+                    )}
+                  </div>
+                </div>
+              `
+              :
+              `
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
+                    Sample Size
+                  </label>
+
+                  <input
+                    id="srQCSampleSize"
+                    type="number"
+                    min="1"
+                    step="any"
+                    value="1"
+                    class="w-full p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+                    placeholder="Enter Sample Size"
+                  >
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
+                    Inspection Type
+                  </label>
+
+                  <select
+                    id="srQCInspectionType"
+                    class="w-full p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+                  >
+                    <option value="Incoming">Incoming</option>
+                    <option value="Outgoing" selected>Outgoing</option>
+                    <option value="In Process">In Process</option>
+                  </select>
+                </div>
+              `
+            }
+
+          </div>
+
+        </div>
+
+
+        <div class="bg-white border rounded-2xl p-4 shadow-sm">
+
+          <div class="font-bold text-sm">
+            Inspection Parameters
+          </div>
+
+          <div class="text-[10px] text-slate-400 mt-1">
+            Specification and acceptance limits are fetched
+            automatically from the ERPNext Quality Inspection Template.
+          </div>
+
+
+          <div class="space-y-3 mt-4">
+
+            ${
+              readings.length
+              ?
+
+              readings.map(function(row,index){
+
+                const parameter =
+                    row.parameter ||
+                    row.parameter_name ||
+                    "";
+
+                const specification =
+                  row.specification
+                  || "";
+
+                const minValue =
+                  row.min_value
+                  || "";
+
+                const maxValue =
+                  row.max_value
+                  || "";
+
+                const criteria =
+                  row.criteria
+                  || "";
+
+                const numeric =
+                  !row.non_numeric
+                  && (
+                    minValue !== ""
+                    || maxValue !== ""
+                  );
+
+                const range =
+                  numeric
+                  ?
+                  (
+                    (minValue || "-")
+                    + " → "
+                    + (maxValue || "-")
+                  )
+                  :
+                  "";
+
+                const existingValue =
+                  row.value
+                  || "";
+
+                return `
+
+                  <div
+                    class="border rounded-xl p-3 bg-white"
+                    data-qc-row="${index}"
+                  >
+
+                    <div class="flex items-start justify-between gap-3">
+
+                      <div class="min-w-0">
+
+                        <div class="text-xs font-bold">
+                          ${escapeHtml(
+                            parameter
+                          )}
+                        </div>
+
+                        ${
+                          specification
+                          ?
+                          `
+                            <div class="text-[11px] text-slate-600 mt-2">
+                              <span class="font-semibold">
+                                Specification:
+                              </span>
+                              ${escapeHtml(
+                                specification
+                              )}
+                            </div>
+                          `
+                          :
+                          ""
+                        }
+
+                        ${
+                          range
+                          ?
+                          `
+                            <div class="text-[10px] text-indigo-600 mt-1 font-semibold">
+                              Allowed Range:
+                              ${escapeHtml(range)}
+                            </div>
+                          `
+                          :
+                          ""
+                        }
+
+                        ${
+                          criteria
+                          ?
+                          `
+                            <div class="text-[10px] text-emerald-600 mt-1 font-semibold">
+                              Acceptance:
+                              ${escapeHtml(criteria)}
+                            </div>
+                          `
+                          :
+                          ""
+                        }
+
+                      </div>
+
+                    </div>
+
+
+                    ${
+                      completed
+
+                      ?
+
+                      `
+                        <div class="mt-3 p-3 rounded-xl bg-slate-50 border">
+
+                          <div class="text-[9px] text-slate-400">
+                            RESULT
+                          </div>
+
+                          <div class="text-sm font-bold mt-1">
+                            ${escapeHtml(
+                              (
+                                row.numeric
+                                ? (
+                                    row.reading_1
+                                    ?? row.reading_value
+                                    ?? ""
+                                  )
+                                : (
+                                    row.reading_value
+                                    ?? row.reading_1
+                                    ?? ""
+                                  )
+                              )
+                              || "-"
+                            )}
+                          </div>
+
+                          ${
+                            row.status
+                            ?
+                            `
+                              <div class="text-[9px] mt-1 text-slate-400">
+                                ${escapeHtml(
+                                  row.status
+                                )}
+                              </div>
+                            `
+                            :
+                            ""
+                          }
+
+                        </div>
+                      `
+
+                      :
+
+                      `
+                        ${
+                          numeric
+                          ?
+                          `
+                            <input
+                              data-parameter="${escapeHtml(parameter)}"
+                              type="number"
+                              step="any"
+                              ${minValue !== "" ? `min="${escapeHtml(minValue)}"` : ""}
+                              ${maxValue !== "" ? `max="${escapeHtml(maxValue)}"` : ""}
+                              value="${escapeHtml(existingValue)}"
+                              class="sr-qc-input w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+                              placeholder="Enter numeric value"
+                              autocomplete="off"
+                            >
+                          `
+                          :
+                          criteria
+                          ?
+                          `
+                            <select
+                              data-parameter="${escapeHtml(parameter)}"
+                              class="sr-qc-input w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+                            >
+                              <option value="">Select</option>
+                              ${
+                                criteria
+                                  .split(/[\/|,;\n]+/)
+                                  .map(function(v){
+                                    return String(v).trim();
+                                  })
+                                  .filter(Boolean)
+                                  .map(function(v){
+                                    const selected =
+                                      String(existingValue || "").trim().toLowerCase()
+                                      === String(v).trim().toLowerCase()
+                                      ? " selected"
+                                      : "";
+
+                                    return `
+                                      <option value="${escapeHtml(v)}"${selected}>
+                                        ${escapeHtml(v)}
+                                      </option>
+                                    `;
+                                  })
+                                  .join("")
+                              }
+                            </select>
+                          `
+                          :
+                          `
+                            <input
+                              data-parameter="${escapeHtml(parameter)}"
+                              type="text"
+                              value="${escapeHtml(existingValue)}"
+                              class="sr-qc-input w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+                              placeholder="Enter result"
+                              autocomplete="off"
+                            >
+                          `
+                        }
+
+                        <div
+                          id="srQCError_${index}"
+                          class="hidden text-[10px] text-rose-600 mt-1"
+                        ></div>
+                      `
+                    }
+
+                  </div>
+
+                `;
+
+              }).join("")
+
+              :
+
+              `
+                <div class="p-3 bg-slate-50 border rounded-xl text-[10px] text-slate-400">
+                  No Quality Inspection parameters were found in the
+                  item's assigned template.
+                </div>
+              `
+            }
+
+          </div>
+
+
+          ${
+            !completed
+            ?
+
+            `
+              <div
+                id="srQCOverallStatus"
+                class="hidden mt-4 p-3 rounded-xl text-xs font-bold"
+              ></div>
+
+
+              <div class="grid grid-cols-2 gap-2 mt-4">
+
+                <button
+                  onclick="srQCSaveBatch()"
+                  class="py-3 bg-white border border-slate-300 text-slate-800 rounded-xl text-xs font-bold"
+                >
+                  SAVE
+                </button>
+
+                <button
+                  onclick="srQCSubmitBatch()"
+                  class="py-3 bg-slate-900 text-white rounded-xl text-xs font-bold"
+                >
+                  SUBMIT QC INSPECTION
+                </button>
+
+              </div>
+            `
+
+            :
+
+            ""
+          }
+
+        </div>
+
+      </div>
+
+    `;
+
+    if(!completed){
+
+      window.srQCTemplateRows = readings;
+
+      if(!readings.length){
+
+        const status =
+          document.getElementById(
+            "srQCOverallStatus"
+          );
+
+        if(status){
+          status.classList.remove("hidden");
+          status.classList.remove(
+            "bg-emerald-50",
+            "text-emerald-700"
+          );
+          status.classList.add(
+            "bg-rose-50",
+            "text-rose-700"
+          );
+
+          status.innerText =
+            "✕ TEMPLATE ERROR — No parameters found.";
+        }
+
+      }
+
+      document
+        .querySelectorAll(
+          '.sr-qc-input'
+        )
+        .forEach(function(input){
+
+          input.addEventListener(
+            "input",
+            function(){
+              srQCValidateBatch(
+                false
+              );
+            }
+          );
+
+        });
+
+      srQCValidateBatch(false);
+
+    }
+
+  }catch(e){
+
+    box.innerHTML = `
+      <div class="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs text-rose-600">
+        ${escapeHtml(
+          e.message
+          || "Unable to load QC template."
+        )}
+      </div>
+    `;
+
+  }
+
+}
+
+
+function srQCCollectReadings(){
+  const readings = [];
+
+  document
+    .querySelectorAll('.sr-qc-input')
+    .forEach(function(input, index){
+      readings.push({
+        index: index,
+        parameter: input.dataset.parameter || "",
+        value: String(input.value || "").trim()
+      });
+    });
+
+  return readings;
+}
+
+
+async function srQCGetTemplateRows(){
+
+  const result =
+    await api(
+      "/api/method/sr_connect.www.home.sr_qc_get_batch"
+      + "?item_code="
+      + encodeURIComponent(
+          srQCState.item.item_code
+        )
+      + "&batch_no="
+      + encodeURIComponent(
+          srQCState.batch
+        )
+      + "&category="
+      + encodeURIComponent(
+          srQCState.category
+        )
+    );
+
+  return Array.isArray(
+    result.readings
+  )
+    ? result.readings
+    : [];
+}
+
+
+function srQCValidateBatch(showAlert){
+  const inputs =
+    Array.from(
+      document.querySelectorAll(".sr-qc-input")
+    );
+
+  const rows =
+    Array.isArray(window.srQCTemplateRows)
+      ? window.srQCTemplateRows
+      : [];
+
+  let valid = true;
+  const errors = [];
+  let firstInvalid = null;
+
+  function getAllowedValues(criteria){
+    const text = String(criteria || "").trim();
+
+    if(!text){
+      return [];
+    }
+
+    // Formula:
+    // reading_value in ("White", "Neutral")
+    const formulaValues =
+      text.match(/["']([^"']+)["']/g);
+
+    if(formulaValues && formulaValues.length){
+      return formulaValues
+        .map(function(v){
+          return v
+            .replace(/^["']|["']$/g, "")
+            .trim();
+        })
+        .filter(Boolean);
+    }
+
+    return text
+      .split(/[\/|,;\n]+/)
+      .map(function(v){
+        return String(v).trim();
+      })
+      .filter(Boolean);
+  }
+
+  inputs.forEach(function(input, index){
+
+    const row =
+      rows[index] || {};
+
+    const parameter =
+      row.parameter ||
+      row.parameter_name ||
+      input.dataset.parameter ||
+      ("Parameter " + (index + 1));
+
+    const value =
+      String(input.value || "").trim();
+
+    const errorBox =
+      document.getElementById(
+        "srQCError_" + index
+      );
+
+    input.classList.remove(
+      "border-rose-500",
+      "bg-rose-50"
+    );
+
+    if(errorBox){
+      errorBox.classList.add("hidden");
+      errorBox.innerText = "";
+    }
+
+    let error = "";
+
+    if(!value){
+
+      error =
+        parameter +
+        ": value is required.";
+
+    }else{
+
+      const criteria =
+        String(
+          row.criteria ||
+          row.acceptance_criteria ||
+          row.acceptance_criteria_value ||
+          ""
+        ).trim();
+
+      const minValue =
+        String(
+          row.min_value ?? ""
+        ).trim();
+
+      const maxValue =
+        String(
+          row.max_value ?? ""
+        ).trim();
+
+      // ------------------------------------------------------
+      // NON-NUMERIC / CRITERIA HAS PRIORITY
+      // ------------------------------------------------------
+      if(criteria){
+
+        const allowed =
+          getAllowedValues(criteria);
+
+        const matched =
+          allowed.some(function(v){
+            return (
+              String(v).trim().toLowerCase()
+              ===
+              value.toLowerCase()
+            );
+          });
+
+        if(!matched){
+
+          error =
+            parameter +
+            ": invalid value '" +
+            value +
+            "'. Allowed: " +
+            allowed.join(", ");
+        }
+
+      }
+
+      // ------------------------------------------------------
+      // NUMERIC RANGE
+      // ------------------------------------------------------
+      else if(
+        minValue !== "" ||
+        maxValue !== ""
+      ){
+
+        const numberValue =
+          Number(value);
+
+        if(!Number.isFinite(numberValue)){
+
+          error =
+            parameter +
+            ": numeric value required.";
+
+        }else if(
+          minValue !== "" &&
+          numberValue < Number(minValue)
+        ){
+
+          error =
+            parameter +
+            ": minimum allowed is " +
+            minValue +
+            ".";
+
+        }else if(
+          maxValue !== "" &&
+          numberValue > Number(maxValue)
+        ){
+
+          error =
+            parameter +
+            ": maximum allowed is " +
+            maxValue +
+            ".";
+        }
+      }
+    }
+
+    if(error){
+
+      valid = false;
+      errors.push(error);
+
+      input.classList.add(
+        "border-rose-500",
+        "bg-rose-50"
+      );
+
+      if(errorBox){
+
+        errorBox.innerText =
+          error;
+
+        errorBox.classList.remove(
+          "hidden"
+        );
+      }
+
+      if(!firstInvalid){
+        firstInvalid = input;
+      }
+    }
+
+  });
+
+  const status =
+    document.getElementById(
+      "srQCOverallStatus"
+    );
+
+  if(status){
+
+    status.classList.remove(
+      "hidden",
+      "bg-emerald-50",
+      "text-emerald-700",
+      "bg-rose-50",
+      "text-rose-700"
+    );
+
+    if(valid){
+
+      status.classList.add(
+        "bg-emerald-50",
+        "text-emerald-700"
+      );
+
+      status.innerText =
+        "✓ ACCEPTED — All values are within specification.";
+
+    }else{
+
+      status.classList.add(
+        "bg-rose-50",
+        "text-rose-700"
+      );
+
+      status.innerText =
+        "✕ REJECTED — Please correct the highlighted values.";
+    }
+  }
+
+  if(
+    !valid &&
+    showAlert
+  ){
+
+    if(firstInvalid){
+
+      firstInvalid.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+
+      setTimeout(function(){
+        firstInvalid.focus();
+      }, 250);
+    }
+
+    alert(
+    errors.join("\n")
+  );
+  }
+
+  return {
+    valid: valid,
+    errors: errors
+  };
+}
+
+async function srQCSaveBatch(){
+
+  try{
+
+    const rows =
+      await srQCGetTemplateRows();
+
+    window.srQCTemplateRows =
+      rows;
+
+    const readings = [];
+
+    rows.forEach(
+      function(row,index){
+
+        const input =
+          document.querySelectorAll('.sr-qc-input')[index];
+
+        readings.push({
+          index: index,
+
+          parameter:
+            row.parameter
+            || row.parameter_name
+            || "",
+
+          specification:
+            row.specification
+            || "",
+
+          criteria:
+            row.criteria
+            || "",
+
+          min_value:
+            row.min_value
+            || "",
+
+          max_value:
+            row.max_value
+            || "",
+
+          acceptance_criteria:
+            row.acceptance_criteria
+            || row.criteria
+            || "",
+
+          value:
+            input
+            ? String(input.value || "").trim()
+            : "",
+
+          status:
+            ""
+        });
+
+      }
+    );
+
+    const check =
+      srQCValidateBatch(
+        false
+      );
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_qc_save",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            item_code:
+              srQCState.item.item_code,
+            batch_no:
+              srQCState.batch,
+            category:
+              srQCState.category,
+            readings:
+              readings,
+            inspection_type:
+              (
+                document.getElementById(
+                  "srQCInspectionType"
+                )?.value
+                || "Outgoing"
+              ),
+
+            sample_size:
+              (
+                document.getElementById(
+                  "srQCSampleSize"
+                )?.value
+                || "1"
+              ),
+
+            reference_type:
+              "Stock Entry",
+
+            reference_name:
+              srQCState.stock_entry
+              || "",
+
+            quality_inspection_template:
+              srQCState.template
+              || ""
+          })
+        }
+      );
+
+    if(result.rejected){
+
+      alert(
+        "✕ QC saved as REJECTED.\n\n"
+        + (
+          (result.errors || [])
+            .map(function(x){
+              return x.message || "";
+            })
+            .filter(Boolean)
+            .join("\n")
+        )
+      );
+
+      srQCValidateBatch(false);
+
+      return;
+
+    }
+
+    alert(
+      "✓ QC saved — ACCEPTED."
+    );
+
+  }catch(e){
+
+    alert(
+      e.message
+      || "Unable to save QC."
+    );
+
+  }
+
+}
+
+
+
+function srQCEscape(v){
+  return String(v ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+
+function srQCGetCriteria(row){
+
+  return String(
+    row.criteria ||
+    row.acceptance_criteria ||
+    row.acceptance_criteria_value ||
+    ""
+  ).trim();
+}
+
+function srQCGetAllowedValues(row){
+
+  const criteria = srQCGetCriteria(row);
+
+  if(!criteria){
+    return [];
+  }
+
+  return criteria
+    .split(/\s*(?:\/|\||,|;|\n)\s*/)
+    .map(function(v){
+      return v.trim();
+    })
+    .filter(Boolean)
+    .filter(function(v,i,a){
+      return a.indexOf(v) === i;
+    });
+}
+
+function srQCIsNumeric(row){
+
+  if(row.non_numeric){
+    return false;
+  }
+
+  return (
+    row.min_value !== undefined &&
+    row.min_value !== null &&
+    row.min_value !== ""
+  ) || (
+    row.max_value !== undefined &&
+    row.max_value !== null &&
+    row.max_value !== ""
+  );
+}
+
+function srQCRenderField(row, index){
+
+  const id = "srQCValue_" + index;
+
+  // ----------------------------------------------------------
+  // NUMERIC
+  // ----------------------------------------------------------
+  if(srQCIsNumeric(row)){
+
+    const min =
+      row.min_value !== undefined &&
+      row.min_value !== null &&
+      row.min_value !== ""
+        ? ` min="${srQCEscape(row.min_value)}"`
+        : "";
+
+    const max =
+      row.max_value !== undefined &&
+      row.max_value !== null &&
+      row.max_value !== ""
+        ? ` max="${srQCEscape(row.max_value)}"`
+        : "";
+
+    return `
+      <input
+        data-index="${index}"
+        type="number"
+        step="any"
+        ${min}
+        ${max}
+        class="w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+        placeholder="Enter numeric reading"
+      >
+    `;
+  }
+
+  // ----------------------------------------------------------
+  // SELECT: Positive / Negative / Satisfactory etc.
+  // ----------------------------------------------------------
+  const allowed = srQCGetAllowedValues(row);
+
+  if(allowed.length){
+
+    return `
+      <select
+        data-index="${index}"
+        class="w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+      >
+        <option value="">Select</option>
+
+        ${allowed.map(function(v){
+
+          return `
+            <option value="${srQCEscape(v)}">
+              ${srQCEscape(v)}
+            </option>
+          `;
+
+        }).join("")}
+
+      </select>
+    `;
+  }
+
+  // ----------------------------------------------------------
+  // Fallback text input
+  // ----------------------------------------------------------
+  return `
+    <input
+      id="${id}"
+      data-index="${index}"
+      type="text"
+      class="w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
+      placeholder="Enter value"
+    >
+  `;
+}
+
+
+
+
+
+
+
+
+
+
+async function srQCSubmitBatch(){
+
+  const values =
+    Array.from(
+      document.querySelectorAll(".sr-qc-input")
+    ).map(function(input){
+      return String(
+        input.value || ""
+      ).trim();
+    });
+
+  let sourceReadings = [];
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_qc_get_batch"
+        + "?item_code="
+        + encodeURIComponent(
+            srQCState.item.item_code
+          )
+        + "&batch_no="
+        + encodeURIComponent(
+            srQCState.batch
+          )
+        + "&category="
+        + encodeURIComponent(
+            srQCState.category
+          )
+      );
+
+    sourceReadings =
+      Array.isArray(result.readings)
+        ? result.readings
+        : [];
+
+  }catch(e){
+
+    alert(
+      e.message ||
+      "Unable to reload QC parameters."
+    );
+
+    return;
+  }
+
+
+  const readings =
+    sourceReadings.map(function(row,index){
+
+      return {
+        parameter:
+          row.parameter || "",
+
+        specification:
+          row.specification || "",
+
+        criteria:
+          row.criteria || "",
+
+        acceptance_criteria:
+          row.acceptance_criteria ||
+          row.criteria ||
+          "",
+
+        non_numeric:
+          !!row.non_numeric,
+
+        value:
+          values[index] || "",
+
+        min_value:
+          row.min_value || "",
+
+        max_value:
+          row.max_value || "",
+
+        status: ""
+      };
+
+    });
+
+
+  if(!readings.length){
+
+    if(
+      !confirm(
+        "No predefined parameters found. Submit anyway?"
+      )
+    ){
+      return;
+    }
+  }
+
+  // ----------------------------------------------------------
+  // FINAL CLIENT-SIDE VALIDATION
+  // ----------------------------------------------------------
+
+  const qcErrors = [];
+
+  readings.forEach(function(row, i){
+
+    const parameter =
+      row.parameter ||
+      ("Inspection parameter " + (i + 1));
+
+    const value =
+      String(row.value || "").trim();
+
+    if(!value){
+
+      qcErrors.push(
+        parameter + ": value is required."
+      );
+
+      return;
+    }
+
+    // Numeric range
+    if(
+      !row.non_numeric &&
+      (
+        (row.min_value !== undefined &&
+         row.min_value !== null &&
+         row.min_value !== "")
+        ||
+        (row.max_value !== undefined &&
+         row.max_value !== null &&
+         row.max_value !== "")
+      )
+    ){
+
+      const numberValue = Number(value);
+
+      if(!Number.isFinite(numberValue)){
+
+        qcErrors.push(
+          parameter + ": numeric value required."
+        );
+
+        return;
+      }
+
+      if(
+        row.min_value !== undefined &&
+        row.min_value !== null &&
+        row.min_value !== "" &&
+        numberValue < Number(row.min_value)
+      ){
+
+        qcErrors.push(
+          parameter +
+          ": minimum allowed is " +
+          row.min_value + "."
+        );
+      }
+
+      if(
+        row.max_value !== undefined &&
+        row.max_value !== null &&
+        row.max_value !== "" &&
+        numberValue > Number(row.max_value)
+      ){
+
+        qcErrors.push(
+          parameter +
+          ": maximum allowed is " +
+          row.max_value + "."
+        );
+      }
+
+      return;
+    }
+
+    // Non-numeric criteria
+    const criteria =
+      srQCGetCriteria(row);
+
+    if(criteria){
+
+      const allowed =
+        srQCGetAllowedValues(row);
+
+      const valid =
+        allowed.some(function(v){
+
+          return String(v).trim().toLowerCase()
+            === value.toLowerCase();
+
+        });
+
+      if(!valid){
+
+        qcErrors.push(
+          parameter +
+          ": invalid value. Allowed: " +
+          allowed.join(", ")
+        );
+      }
+    }
+
+  });
+
+  if(qcErrors.length){
+
+    alert(
+      "QC REJECTED:\\n\\n" +
+      qcErrors.join("\\n")
+    );
+
+    return;
+  }
+
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_qc_submit",
+        {
+          method:"POST",
+          body:JSON.stringify({
+            item_code:
+              srQCState.item.item_code,
+
+            batch_no:
+              srQCState.batch,
+
+            category:
+              srQCState.category,
+
+            readings:
+              readings,
+
+            inspection_type:
+              "Outgoing"
+          })
+        }
+      );
+
+    if(!result.success){
+
+      throw new Error(
+        result.message ||
+        "QC submission failed."
+      );
+    }
+
+    alert(
+      "✓ QC Inspection submitted: "
+      + result.name
+    );
+
+    await srQCOpenItem(
+      srQCState.item.item_code,
+      srQCState.item.item_name
+    );
+
+  }catch(e){
+
+    alert(
+      e.message ||
+      "QC Inspection submission failed."
+    );
+  }
+}
+
+
 
 
 /* =========================================================
@@ -23192,4 +25709,4414 @@ async function(resultIndex,index){
 
 
 
+
+
+<script>
+/* ==========================================================
+   SR CONNECT QC FINAL UI PATCH
+   ========================================================== */
+
+(function () {
+
+  function srQCText(v) {
+    return v === null || v === undefined ? "" : String(v).trim();
+  }
+
+  function srQCNum(v) {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function srQCAllowed(row) {
+    const text = srQCText(
+      row.acceptance_criteria ||
+      row.acceptance_criteria_value ||
+      ""
+    );
+
+    if (!text) return [];
+
+    return text
+      .split(/\s*(?:\/|\||,|;|\n)\s*/)
+      .map(x => x.trim())
+      .filter(Boolean)
+      .filter((x, i, a) => a.indexOf(x) === i);
+  }
+
+  function srQCIsNumeric(row) {
+    return (
+      !row.non_numeric &&
+      (
+        row.min_value !== null &&
+        row.min_value !== undefined &&
+        row.min_value !== ""
+      ) ||
+      (
+        !row.non_numeric &&
+        row.max_value !== null &&
+        row.max_value !== undefined &&
+        row.max_value !== ""
+      )
+    );
+  }
+
+  function srQCEscape(v) {
+    return srQCText(v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function srQCValidateOne(row, value) {
+
+    const parameter =
+      srQCText(row.parameter) || "Inspection parameter";
+
+    const valueText = srQCText(value);
+
+    if (!valueText) {
+      return {
+        ok: false,
+        message: parameter + ": value is required."
+      };
+    }
+
+    // Numeric
+    if (srQCIsNumeric(row)) {
+
+      const n = Number(value);
+
+      if (!Number.isFinite(n)) {
+        return {
+          ok: false,
+          message: parameter + ": numeric value required."
+        };
+      }
+
+      if (
+        row.min_value !== null &&
+        row.min_value !== undefined &&
+        row.min_value !== "" &&
+        n < Number(row.min_value)
+      ) {
+        return {
+          ok: false,
+          message:
+            parameter +
+            ": value must be at least " +
+            row.min_value + "."
+        };
+      }
+
+      if (
+        row.max_value !== null &&
+        row.max_value !== undefined &&
+        row.max_value !== "" &&
+        n > Number(row.max_value)
+      ) {
+        return {
+          ok: false,
+          message:
+            parameter +
+            ": value must not exceed " +
+            row.max_value + "."
+        };
+      }
+
+      return { ok: true };
+    }
+
+    // Non numeric
+    const allowed = srQCAllowed(row);
+
+    if (allowed.length) {
+
+      const matched = allowed.some(
+        x => x.toLowerCase() === valueText.toLowerCase()
+      );
+
+      if (!matched) {
+        return {
+          ok: false,
+          message:
+            parameter +
+            ": invalid value. Allowed: " +
+            allowed.join(", ")
+        };
+      }
+    }
+
+    return { ok: true };
+  }
+
+
+  function srQCReadCurrentRows() {
+
+    const rows = [];
+
+    document
+      .querySelectorAll("[data-sr-qc-row]")
+      .forEach(function (box) {
+
+        const index = Number(
+          box.getAttribute("data-sr-qc-row")
+        );
+
+        const input =
+          box.querySelector("[data-sr-qc-input]");
+
+        if (!input) return;
+
+        const value = input.value;
+
+        const templateRows =
+          window.srQCTemplateRows || [];
+
+        const templateRow =
+          templateRows[index] || {};
+
+        rows.push({
+          parameter:
+            templateRow.parameter ||
+            box.getAttribute("data-parameter") ||
+            "",
+
+          value: value,
+
+          specification:
+            templateRow.specification ||
+            box.getAttribute("data-specification") ||
+            "",
+
+          min_value:
+            templateRow.min_value ?? null,
+
+          max_value:
+            templateRow.max_value ?? null,
+
+          acceptance_criteria:
+            templateRow.acceptance_criteria ||
+            "",
+
+          non_numeric:
+            !!templateRow.non_numeric,
+
+          status: "Accepted"
+        });
+
+      });
+
+    return rows;
+  }
+
+
+  function srQCShowValidation() {
+
+    const rows = srQCReadCurrentRows();
+
+    let errors = [];
+
+    rows.forEach(function (row) {
+
+      const result =
+        srQCValidateOne(row, row.value);
+
+      if (!result.ok) {
+        errors.push(result.message);
+      }
+
+    });
+
+    const box =
+      document.getElementById("sr-qc-validation");
+
+    if (!box) {
+      return errors.length === 0;
+    }
+
+    if (errors.length) {
+
+      box.style.display = "block";
+      box.style.background = "#fee2e2";
+      box.style.color = "#991b1b";
+      box.innerHTML =
+        "✕ <b>REJECTED</b><br>" +
+        errors.join("<br>");
+
+      return false;
+    }
+
+    box.style.display = "block";
+    box.style.background = "#dcfce7";
+    box.style.color = "#166534";
+    box.innerHTML =
+      "✓ <b>ACCEPTED</b> — All values are within specification.";
+
+    return true;
+  }
+
+
+  function srQCRenderInput(row, index) {
+
+    const parameter =
+      srQCEscape(
+        row.parameter || "Inspection parameter"
+      );
+
+    const specification =
+      srQCEscape(row.specification || "");
+
+    const allowed =
+      srQCAllowed(row);
+
+    const numeric =
+      srQCIsNumeric(row);
+
+    let html = "";
+
+    if (numeric) {
+
+      const minAttr =
+        row.min_value !== null &&
+        row.min_value !== undefined &&
+        row.min_value !== ""
+          ? ` min="${srQCEscape(row.min_value)}"`
+          : "";
+
+      const maxAttr =
+        row.max_value !== null &&
+        row.max_value !== undefined &&
+        row.max_value !== ""
+          ? ` max="${srQCEscape(row.max_value)}"`
+          : "";
+
+      html = `
+        <input
+          class="sr-qc-input"
+          data-sr-qc-input
+          type="number"
+          step="any"
+          ${minAttr}
+          ${maxAttr}
+          placeholder="Enter reading"
+        >
+      `;
+
+    } else if (allowed.length) {
+
+      html = `
+        <select
+          class="sr-qc-input"
+          data-sr-qc-input
+        >
+          <option value="">Select</option>
+          ${allowed.map(function (value) {
+            return `
+              <option value="${srQCEscape(value)}">
+                ${srQCEscape(value)}
+              </option>
+            `;
+          }).join("")}
+        </select>
+      `;
+
+    } else {
+
+      html = `
+        <input
+          class="sr-qc-input"
+          data-sr-qc-input
+          type="text"
+          placeholder="Enter reading"
+        >
+      `;
+    }
+
+    return `
+      <div
+        data-sr-qc-row="${index}"
+        data-parameter="${parameter}"
+        data-specification="${specification}"
+        style="
+          margin:10px 0;
+          padding:14px;
+          border:1px solid #e5e7eb;
+          border-radius:14px;
+          background:#fff;
+        "
+      >
+
+        <div style="
+          font-weight:700;
+          font-size:14px;
+          margin-bottom:7px;
+        ">
+          ${parameter}
+        </div>
+
+        ${
+          specification
+            ? `
+              <div style="
+                font-size:12px;
+                color:#6b7280;
+                margin-bottom:8px;
+              ">
+                <b>Specification:</b>
+                ${specification}
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          numeric &&
+          (
+            row.min_value !== null ||
+            row.max_value !== null
+          )
+            ? `
+              <div style="
+                font-size:11px;
+                color:#6b7280;
+                margin-bottom:8px;
+              ">
+                Allowed range:
+                ${
+                  row.min_value !== null &&
+                  row.min_value !== undefined &&
+                  row.min_value !== ""
+                    ? srQCEscape(row.min_value)
+                    : "—"
+                }
+                -
+                ${
+                  row.max_value !== null &&
+                  row.max_value !== undefined &&
+                  row.max_value !== ""
+                    ? srQCEscape(row.max_value)
+                    : "—"
+                }
+              </div>
+            `
+            : ""
+        }
+
+        ${html}
+
+      </div>
+    `;
+  }
+
+
+  /*
+   * This function is deliberately independent from Work Order.
+   * It only changes the QC batch form.
+   */
+  window.srQCRenderTemplateParameters =
+    function (readings) {
+
+      window.srQCTemplateRows =
+        Array.isArray(readings)
+          ? readings
+          : [];
+
+      const container =
+        document.getElementById("sr-qc-parameters");
+
+      if (!container) return;
+
+      if (!window.srQCTemplateRows.length) {
+
+        container.innerHTML = `
+          <div style="
+            padding:16px;
+            border-radius:14px;
+            background:#fef3c7;
+            color:#92400e;
+          ">
+            No Quality Inspection parameters were found
+            in the item's assigned template.
+          </div>
+        `;
+
+        return;
+      }
+
+      container.innerHTML =
+        window.srQCTemplateRows
+          .map(srQCRenderInput)
+          .join("");
+
+      // IMPORTANT:
+      // Do NOT re-render on input/change.
+      // This keeps cursor/focus stable.
+
+      container
+        .querySelectorAll("[data-sr-qc-input]")
+        .forEach(function (input) {
+
+          input.addEventListener(
+            "input",
+            function () {
+              srQCShowValidation();
+            }
+          );
+
+          input.addEventListener(
+            "change",
+            function () {
+              srQCShowValidation();
+            }
+          );
+
+        });
+
+      srQCShowValidation();
+    };
+
+
+  /*
+   * Save wrapper.
+   * Uses current logged-in session on server.
+   */
+  window.srQCSaveFinal =
+    async function () {
+
+      const rows =
+        srQCReadCurrentRows();
+
+      let errors = [];
+
+      rows.forEach(function (row) {
+
+        const result =
+          srQCValidateOne(row, row.value);
+
+        if (!result.ok) {
+          errors.push(result.message);
+        }
+
+      });
+
+      if (errors.length) {
+
+        srQCShowValidation();
+
+        if (typeof frappe !== "undefined" && frappe.msgprint) {
+          frappe.msgprint(
+            errors.join("<br>")
+          );
+        } else {
+          alert(errors.join("\n"));
+        }
+
+        return false;
+      }
+
+      const itemCode =
+        window.srQCCurrentItem ||
+        window.srQCItemCode ||
+        "";
+
+      const batchNo =
+        window.srQCCurrentBatch ||
+        window.srQCBatchNo ||
+        "";
+
+      const qiName =
+        window.srQCCurrentQI ||
+        "";
+
+      try {
+
+        const result =
+          await api(
+            "/api/method/sr_connect.www.home.sr_qc_save",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                item_code: itemCode,
+                batch_no: batchNo,
+                readings: rows,
+                qi_name: qiName
+              })
+            }
+          );
+
+        window.srQCCurrentQI =
+          result.name || qiName;
+
+        if (typeof frappe !== "undefined" && frappe.msgprint) {
+          frappe.msgprint("QC Inspection saved.");
+        } else {
+          alert("QC Inspection saved.");
+        }
+
+        return true;
+
+      } catch (e) {
+
+        console.error(e);
+
+        if (typeof frappe !== "undefined" && frappe.msgprint) {
+          frappe.msgprint(
+            e.message || "Could not save QC Inspection."
+          );
+        } else {
+          alert(
+            e.message || "Could not save QC Inspection."
+          );
+        }
+
+        return false;
+      }
+    };
+
+
+  window.srQCSubmitFinal =
+    async function () {
+
+      const rows =
+        srQCReadCurrentRows();
+
+      let errors = [];
+
+      rows.forEach(function (row) {
+
+        const result =
+          srQCValidateOne(row, row.value);
+
+        if (!result.ok) {
+          errors.push(result.message);
+        }
+
+      });
+
+      if (errors.length) {
+
+        srQCShowValidation();
+
+        if (typeof frappe !== "undefined" && frappe.msgprint) {
+          frappe.msgprint(
+            errors.join("<br>")
+          );
+        } else {
+          alert(errors.join("\n"));
+        }
+
+        return false;
+      }
+
+      const itemCode =
+        window.srQCCurrentItem ||
+        window.srQCItemCode ||
+        "";
+
+      const batchNo =
+        window.srQCCurrentBatch ||
+        window.srQCBatchNo ||
+        "";
+
+      const qiName =
+        window.srQCCurrentQI ||
+        "";
+
+      try {
+
+        const result =
+          await api(
+            "/api/method/sr_connect.www.home.sr_qc_submit",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                item_code: itemCode,
+                batch_no: batchNo,
+                readings: rows,
+                qi_name: qiName
+              })
+            }
+          );
+
+        window.srQCCurrentQI =
+          result.name || qiName;
+
+        if (typeof frappe !== "undefined" && frappe.msgprint) {
+          frappe.msgprint(
+            "QC Inspection submitted successfully."
+          );
+        } else {
+          alert(
+            "QC Inspection submitted successfully."
+          );
+        }
+
+        return true;
+
+      } catch (e) {
+
+        console.error(e);
+
+        if (typeof frappe !== "undefined" && frappe.msgprint) {
+          frappe.msgprint(
+            e.message || "Could not submit QC Inspection."
+          );
+        } else {
+          alert(
+            e.message || "Could not submit QC Inspection."
+          );
+        }
+
+        return false;
+      }
+    };
+
+})();
+</script>
+
+
+<script>
+/* SR CONNECT QC COMPLETED PRINT FINAL V1 */
+
+async function srQCPrintCompleted(){
+  try {
+    const itemCode = String(
+      (window.srQCState && (window.srQCState.item_code || window.srQCState.item)) || ""
+    ).trim();
+
+    const batchNo = String(
+      (window.srQCState && (window.srQCState.batch_no || window.srQCState.batch)) || ""
+    ).trim();
+
+    const category = String(
+      (window.srQCState && window.srQCState.category) || ""
+    ).trim().toLowerCase();
+
+    if (!batchNo) {
+      alert("Batch information is missing.");
+      return;
+    }
+
+    if (category !== "product" && category !== "quality") {
+      alert("Invalid QC category.");
+      return;
+    }
+
+    let qiName = "";
+
+    // ---------------------------------------------------------
+    // 1. FIRST: ask our own backend for the exact QC record.
+    // ---------------------------------------------------------
+    try {
+      let apiUrl =
+        "/api/method/sr_connect.www.home.sr_qc_get_batch"
+        + "?batch_no=" + encodeURIComponent(batchNo)
+        + "&category=" + encodeURIComponent(category);
+
+      if (itemCode) {
+        apiUrl += "&item_code=" + encodeURIComponent(itemCode);
+      }
+
+      const res = await fetch(apiUrl);
+      const json = await res.json();
+      const result = json && json.message ? json.message : json;
+
+      if (result) {
+        qiName = String(
+          result.inspection_name
+          || result.qi_name
+          || result.quality_inspection_name
+          || ""
+        ).trim();
+
+        if (!qiName && result.inspection) {
+          if (typeof result.inspection === "string") {
+            qiName = result.inspection.trim();
+          } else {
+            qiName = String(result.inspection.name || "").trim();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("sr_qc_get_batch lookup failed:", e);
+    }
+
+    // ---------------------------------------------------------
+    // 2. FALLBACK: directly find the correct QI by batch/category.
+    //    Do NOT stop just because backend success is false/missing.
+    // ---------------------------------------------------------
+    if (!qiName) {
+      const wantedCategory =
+        category === "product" ? "Product" : "Application";
+
+      const filters = [
+        ["Quality Inspection", "batch_no", "=", batchNo],
+        ["Quality Inspection", "custom_qc_inspection_type", "=", wantedCategory],
+        ["Quality Inspection", "docstatus", "=", 1]
+      ];
+
+      if (itemCode) {
+        filters.push(
+          ["Quality Inspection", "item_code", "=", itemCode]
+        );
+      }
+
+      const url =
+        "/api/method/frappe.client.get_list"
+        + "?doctype=" + encodeURIComponent("Quality Inspection")
+        + "&fields=" + encodeURIComponent(JSON.stringify([
+            "name",
+            "item_code",
+            "batch_no",
+            "custom_qc_inspection_type",
+            "status",
+            "docstatus",
+            "creation"
+        ]))
+        + "&filters=" + encodeURIComponent(JSON.stringify(filters))
+        + "&order_by=" + encodeURIComponent("creation desc")
+        + "&limit_page_length=20";
+
+      try {
+        const res = await fetch(url);
+        const json = await res.json();
+
+        const rows =
+          json && Array.isArray(json.message)
+          ? json.message
+          : [];
+
+        if (rows.length) {
+          qiName = String(rows[0].name || "").trim();
+        }
+      } catch (e) {
+        console.warn("Direct QI lookup failed:", e);
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 3. LAST fallback: batch only, then choose category locally.
+    //    This protects against custom field filtering issues.
+    // ---------------------------------------------------------
+    if (!qiName) {
+      try {
+        const url =
+          "/api/method/frappe.client.get_list"
+          + "?doctype=" + encodeURIComponent("Quality Inspection")
+          + "&fields=" + encodeURIComponent(JSON.stringify([
+              "name",
+              "item_code",
+              "batch_no",
+              "custom_qc_inspection_type",
+              "status",
+              "docstatus",
+              "creation"
+          ]))
+          + "&filters=" + encodeURIComponent(JSON.stringify([
+              ["Quality Inspection", "batch_no", "=", batchNo],
+              ["Quality Inspection", "docstatus", "=", 1]
+          ]))
+          + "&order_by=" + encodeURIComponent("creation desc")
+          + "&limit_page_length=50";
+
+        const res = await fetch(url);
+        const json = await res.json();
+
+        const rows =
+          json && Array.isArray(json.message)
+          ? json.message
+          : [];
+
+        const wantedCategory =
+          category === "product" ? "Product" : "Application";
+
+        const matching = rows.filter(function(row){
+          return String(
+            row.custom_qc_inspection_type || ""
+          ).trim() === wantedCategory;
+        });
+
+        if (matching.length) {
+          qiName = String(matching[0].name || "").trim();
+        }
+      } catch (e) {
+        console.warn("Batch-only QI lookup failed:", e);
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 4. If still nothing, show the error.
+    // ---------------------------------------------------------
+    if (!qiName) {
+      const label =
+        category === "product"
+        ? "Product Quality Inspection"
+        : "Quality Inspection";
+
+      alert(label + " was not found for batch " + batchNo);
+      return;
+    }
+
+    console.log(
+      "SR QC PRINT:",
+      "category =", category,
+      "batch =", batchNo,
+      "QI =", qiName
+    );
+
+    // ---------------------------------------------------------
+    // 5. Open Certificate of Analysis preview.
+    //    No trigger_print=1 so preview remains open.
+    // ---------------------------------------------------------
+    const printUrl =
+      "/printview"
+      + "?doctype=" + encodeURIComponent("Quality Inspection")
+      + "&name=" + encodeURIComponent(qiName)
+      + "&format=" + encodeURIComponent("Certificate of Analysis");
+
+    window.open(
+      printUrl,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+  } catch (err) {
+    console.error("SR QC PRINT ERROR:", err);
+    alert(
+      "Unable to open QC print preview.\n"
+      + (err && err.message ? err.message : err)
+    );
+  }
+}
+
+</script>
+
+
+
+<script>
+/* =========================================================
+   SR PRODUCT COA - FINAL STANDALONE VERSION
+   ========================================================= */
+
+(function(){
+
+  /*
+   * -------------------------------------------------------
+   * Remove ONLY old COA UI from QC Inspection.
+   * Do NOT touch the new standalone COA screen.
+   * -------------------------------------------------------
+   */
+  function removeOldQCProductCOA(){
+
+    const box =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+    if(!box){
+      return;
+    }
+
+
+    /*
+     * Old COA IDs.
+     */
+    [
+      "srDistributorCOASearch",
+      "srCOABatchInput",
+      "srCOASearchBody",
+      "srCOAResults",
+      "srCOAProductToggle",
+      "srCOAApplicationToggle",
+      "srQCTopCOAToggle"
+    ].forEach(function(id){
+
+      box
+        .querySelectorAll("#" + id)
+        .forEach(function(el){
+
+          const card =
+            el.closest(
+              ".bg-white.border.rounded-2xl"
+            );
+
+          if(card){
+            card.remove();
+          }else{
+            el.remove();
+          }
+
+        });
+
+    });
+
+
+    /*
+     * Remove old COA SEARCH cards that have
+     * Batch No + Search.
+     */
+    box
+      .querySelectorAll(
+        ".bg-white.border.rounded-2xl"
+      )
+      .forEach(function(card){
+
+        const text =
+          String(
+            card.innerText || ""
+          )
+          .trim()
+          .toUpperCase();
+
+
+        if(
+          text.includes("COA SEARCH") &&
+          text.includes("BATCH NO") &&
+          text.includes("SEARCH")
+        ){
+
+          card.remove();
+
+        }
+
+      });
+
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * OPEN STANDALONE SR PRODUCT COA
+   * -------------------------------------------------------
+   */
+  window.srOpenProductCOA = function(){
+
+    /*
+     * Hide normal application sections.
+     */
+    document
+      .querySelectorAll("section")
+      .forEach(function(section){
+
+        section.classList.add(
+          "hidden"
+        );
+
+      });
+
+
+    const view =
+      document.getElementById(
+        "srProductCOAView"
+      );
+
+
+    if(!view){
+
+      alert(
+        "SR PRODUCT COA screen not found."
+      );
+
+      return;
+
+    }
+
+
+    view.classList.remove(
+      "hidden"
+    );
+
+
+    const content =
+      document.getElementById(
+        "srProductCOAContent"
+      );
+
+
+    if(!content){
+      return;
+    }
+
+
+    content.innerHTML = `
+
+      <div class="flex items-center gap-3 mb-4">
+
+        <button
+          type="button"
+          onclick="srCloseProductCOA()"
+          class="w-10 h-10 rounded-full
+                 bg-white border
+                 flex items-center justify-center
+                 text-lg"
+        >
+          ←
+        </button>
+
+
+        <div>
+
+          <div
+            class="font-bold text-lg"
+          >
+            SR PRODUCT COA
+          </div>
+
+
+          <div
+            class="text-[10px] text-slate-400 mt-1"
+          >
+            Search Product Certificate of Analysis
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="bg-white border rounded-2xl
+               p-4 shadow-sm"
+      >
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+
+          <button
+            type="button"
+            id="srStandaloneProductCOAToggle"
+            aria-pressed="true"
+            onclick="srStandaloneToggleCOA('product')"
+            class="flex items-center justify-between
+                   border rounded-xl px-3 py-3
+                   bg-white"
+          >
+            <span class="text-xs font-bold">
+              PRODUCT COA
+            </span>
+
+            <span
+              id="srStandaloneProductCOAKnob"
+              class="w-10 h-5 rounded-full
+                     bg-slate-900 relative"
+            >
+              <span
+                class="absolute top-0.5 left-5
+                       w-4 h-4 bg-white rounded-full shadow"
+              ></span>
+            </span>
+          </button>
+
+
+          <button
+            type="button"
+            id="srStandaloneApplicationCOAToggle"
+            aria-pressed="false"
+            onclick="srStandaloneToggleCOA('application')"
+            class="flex items-center justify-between
+                   border rounded-xl px-3 py-3
+                   bg-white"
+          >
+            <span class="text-xs font-bold">
+              APPLICATION COA
+            </span>
+
+            <span
+              id="srStandaloneApplicationCOAKnob"
+              class="w-10 h-5 rounded-full
+                     bg-slate-300 relative"
+            >
+              <span
+                class="absolute top-0.5 left-0.5
+                       w-4 h-4 bg-white rounded-full shadow"
+              ></span>
+            </span>
+          </button>
+
+        </div>
+
+
+        <label
+          class="block text-[10px]
+                 font-bold text-slate-500 mb-2"
+        >
+          BATCH NO
+        </label>
+
+
+        <input
+          id="srStandaloneCOABatchInput"
+          type="text"
+          autocomplete="off"
+          placeholder="Enter Batch No"
+          class="w-full border rounded-xl
+                 px-3 py-3 text-sm
+                 outline-none
+                 focus:ring-2
+                 focus:ring-indigo-200"
+        />
+
+
+        <button
+          type="button"
+          onclick="srStandaloneProductCOASearch()"
+          class="w-full mt-3 py-3 rounded-xl
+                 bg-slate-900 text-white
+                 text-xs font-bold
+                 active:scale-95"
+        >
+          SEARCH
+        </button>
+
+
+        <div
+          id="srStandaloneCOAResults"
+          class="mt-4 space-y-2"
+        ></div>
+
+      </div>
+
+    `;
+
+  };
+
+
+  /*
+   * -------------------------------------------------------
+   * CLOSE STANDALONE COA
+   * -------------------------------------------------------
+   */
+  /*
+   * -------------------------------------------------------
+   * STANDALONE COA PRODUCT / APPLICATION TOGGLE
+   *
+   * Product     = default ON
+   * Application = default OFF
+   * -------------------------------------------------------
+   */
+  window.srStandaloneToggleCOA = function(category){
+
+    const productButton =
+      document.getElementById(
+        "srStandaloneProductCOAToggle"
+      );
+
+    const applicationButton =
+      document.getElementById(
+        "srStandaloneApplicationCOAToggle"
+      );
+
+
+    const button =
+      category === "application"
+        ? applicationButton
+        : productButton;
+
+
+    if(!button){
+      return;
+    }
+
+
+    const oldState =
+      button.getAttribute("aria-pressed") === "true";
+
+
+    const newState =
+      !oldState;
+
+
+    button.setAttribute(
+      "aria-pressed",
+      String(newState)
+    );
+
+
+    if(category === "application"){
+
+      button.className =
+        newState
+          ? "flex-1 py-2.5 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-bold"
+          : "flex-1 py-2.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-[11px] font-bold";
+
+    }else{
+
+      button.className =
+        newState
+          ? "flex-1 py-2.5 px-3 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-bold"
+          : "flex-1 py-2.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-[11px] font-bold";
+
+    }
+
+  };
+
+
+  window.srCloseProductCOA = function(){
+
+    const view =
+      document.getElementById(
+        "srProductCOAView"
+      );
+
+    if(view){
+      view.classList.add(
+        "hidden"
+      );
+    }
+
+
+    const home =
+      document.getElementById(
+        "homeView"
+      );
+
+    if(home){
+      home.classList.remove(
+        "hidden"
+      );
+    }
+
+  };
+
+
+  /*
+   * -------------------------------------------------------
+   * SEARCH PRODUCT COA
+   * -------------------------------------------------------
+   */
+  window.srStandaloneProductCOASearch =
+    async function(){
+
+      const input =
+        document.getElementById(
+          "srStandaloneCOABatchInput"
+        );
+
+      const results =
+        document.getElementById(
+          "srStandaloneCOAResults"
+        );
+
+      if(!input || !results){
+        return;
+      }
+
+      const batchNo =
+        String(
+          input.value || ""
+        ).trim();
+
+      if(!batchNo){
+
+        results.innerHTML = `
+          <div
+            class="border border-amber-200
+                   bg-amber-50 rounded-xl
+                   p-3 text-xs
+                   text-amber-700"
+          >
+            Please enter Batch No.
+          </div>
+        `;
+
+        return;
+      }
+
+
+      /*
+       * ---------------------------------------------------
+       * COA CONTROL SOURCE
+       *
+       * Product / Application ON-OFF is controlled from
+       * the Completed Inspection batch-list toggle.
+       *
+       * Standalone COA screen has NO selector.
+       * ---------------------------------------------------
+       */
+
+      let productEnabled = 0;
+      let applicationEnabled = 0;
+
+
+      /*
+       * Read the same persistent state used by
+       * Completed Inspection batch toggles.
+       */
+      try{
+
+        const savedState =
+          localStorage.getItem(
+            "srQCCOAState"
+          );
+
+        if(savedState){
+
+          window.srQCCOAState =
+            JSON.parse(savedState) || {};
+
+        }
+
+      }catch(e){}
+
+
+      const productKey =
+        "product:" + batchNo;
+
+      const applicationKey =
+        "application:" + batchNo;
+
+
+      /*
+       * Default:
+       * Product ON
+       * Application OFF
+       */
+      productEnabled =
+        Object.prototype.hasOwnProperty.call(
+          window.srQCCOAState || {},
+          productKey
+        )
+          ? (
+              window.srQCCOAState[productKey]
+                ? 1
+                : 0
+            )
+          : 1;
+
+
+      applicationEnabled =
+        Object.prototype.hasOwnProperty.call(
+          window.srQCCOAState || {},
+          applicationKey
+        )
+          ? (
+              window.srQCCOAState[applicationKey]
+                ? 1
+                : 0
+            )
+          : 0;
+
+
+      results.innerHTML = `
+        <div
+          class="border rounded-xl
+                 bg-slate-50 p-3
+                 text-xs text-slate-500"
+        >
+          Searching Batch
+          <b>${srCOAEscape(batchNo)}</b>...
+        </div>
+      `;
+
+
+      try{
+
+        const url =
+          "/api/method/sr_connect.www.home.sr_coa_search_batch"
+          + "?batch_no="
+          + encodeURIComponent(batchNo)
+          + "&product_coa="
+          + productEnabled
+          + "&application_coa="
+          + applicationEnabled;
+
+
+        const response =
+          await fetch(url);
+
+
+        const json =
+          await response.json();
+
+
+        const data =
+          json && json.message
+            ? json.message
+            : json;
+
+
+        if(!data){
+
+          results.innerHTML = `
+            <div
+              class="border border-rose-200
+                     bg-rose-50 rounded-xl p-3
+                     text-xs text-rose-700"
+            >
+              COA search failed.
+            </div>
+          `;
+
+          return;
+        }
+
+
+        if(!data.found){
+
+          results.innerHTML = `
+            <div
+              class="border border-amber-200
+                     bg-amber-50 rounded-xl
+                     p-3 text-xs
+                     text-amber-700"
+            >
+              Batch
+              <b>${srCOAEscape(batchNo)}</b>
+              was not found in ERPNext Batch.
+            </div>
+          `;
+
+          return;
+        }
+
+
+        const rows =
+          Array.isArray(
+            data.quality_inspections
+          )
+            ? data.quality_inspections
+            : [];
+
+
+        if(!rows.length){
+
+          results.innerHTML = `
+            <div
+              class="border rounded-xl
+                     bg-slate-50 p-4"
+            >
+
+              <div class="font-bold text-sm">
+                ${srCOAEscape(
+                  data.item_name ||
+                  data.item_code ||
+                  ""
+                )}
+              </div>
+
+              <div
+                class="text-[10px]
+                       text-slate-400 mt-1"
+              >
+                Batch:
+                ${srCOAEscape(
+                  data.batch_no ||
+                  batchNo
+                )}
+              </div>
+
+              <div
+                class="text-xs
+                       text-slate-500 mt-3"
+              >
+                No COA is enabled for this batch.
+              </div>
+
+            </div>
+          `;
+
+          return;
+        }
+
+
+        let output = `
+
+          <div
+            class="border rounded-xl
+                   bg-slate-50 p-4"
+          >
+
+            <div class="font-bold text-sm">
+              ${srCOAEscape(
+                data.item_name ||
+                data.item_code ||
+                ""
+              )}
+            </div>
+
+            <div
+              class="text-[10px]
+                     text-slate-400 mt-1"
+            >
+              Batch:
+              <b>
+                ${srCOAEscape(
+                  data.batch_no ||
+                  batchNo
+                )}
+              </b>
+            </div>
+
+          </div>
+
+        `;
+
+
+        rows.forEach(function(row){
+
+          const qi =
+            String(
+              row.qi_name ||
+              row.name ||
+              ""
+            ).trim();
+
+          if(!qi){
+            return;
+          }
+
+
+          const category =
+            String(
+              row.category || ""
+            ).trim().toLowerCase();
+
+
+          const isApplication =
+            category === "application"
+            || category === "quality";
+
+
+          const label =
+            isApplication
+              ? "APPLICATION COA"
+              : "PRODUCT COA";
+
+
+          const labelClass =
+            isApplication
+              ? "text-emerald-700"
+              : "text-indigo-700";
+
+
+          output += `
+
+            <button
+              type="button"
+              onclick="srStandaloneProductCOAPrint('${srCOAAttr(qi)}')"
+              class="w-full text-left
+                     border rounded-xl
+                     p-4 bg-white
+                     shadow-sm
+                     active:scale-[0.99]"
+            >
+
+              <div
+                class="flex items-center
+                       justify-between"
+              >
+
+                <div>
+
+                  <div
+                    class="font-bold text-sm
+                           ${labelClass}"
+                  >
+                    ${label}
+                  </div>
+
+                  <div
+                    class="text-[10px]
+                           text-slate-400 mt-1"
+                  >
+                    Quality Inspection:
+                    ${srCOAEscape(qi)}
+                  </div>
+
+                  <div
+                    class="text-[10px]
+                           text-slate-400 mt-1"
+                  >
+                    Batch:
+                    ${srCOAEscape(
+                      row.batch_no ||
+                      data.batch_no ||
+                      batchNo
+                    )}
+                  </div>
+
+                </div>
+
+                <span
+                  class="text-indigo-600
+                         font-bold text-xl"
+                >
+                  ›
+                </span>
+
+              </div>
+
+            </button>
+
+          `;
+
+        });
+
+
+        results.innerHTML =
+          output;
+
+
+      }catch(err){
+
+        console.error(
+          "SR PRODUCT COA SEARCH ERROR:",
+          err
+        );
+
+        results.innerHTML = `
+          <div
+            class="border border-rose-200
+                   bg-rose-50 rounded-xl
+                   p-3 text-xs
+                   text-rose-700"
+          >
+            COA search failed.
+          </div>
+        `;
+
+      }
+
+    };
+
+  /*
+   * -------------------------------------------------------
+   * PRINT
+   * -------------------------------------------------------
+   */
+  window.srStandaloneProductCOAPrint =
+    function(qiName){
+
+      qiName =
+        String(qiName || "").trim();
+
+
+      if(!qiName){
+
+        alert(
+          "Quality Inspection not found."
+        );
+
+        return;
+
+      }
+
+
+      const url =
+        "/printview"
+        + "?doctype="
+        + encodeURIComponent(
+            "Quality Inspection"
+          )
+        + "&name="
+        + encodeURIComponent(
+            qiName
+          )
+        + "&format="
+        + encodeURIComponent(
+            "Certificate of Analysis"
+          );
+
+
+      /*
+       * No trigger_print=1
+       */
+      window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+    };
+
+
+  function srCOAEscape(value){
+
+    return String(value || "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+
+  }
+
+
+  function srCOAAttr(value){
+
+    return String(value || "")
+      .replace(/\\/g,"\\\\")
+      .replace(/'/g,"\\'");
+
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * OBSERVE QC ONLY
+   *
+   * Never touch srProductCOAView.
+   * -------------------------------------------------------
+   */
+  const observer =
+    new MutationObserver(function(){
+
+      setTimeout(
+        removeOldQCProductCOA,
+        20
+      );
+
+    });
+
+
+  function start(){
+
+    const qc =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+
+    if(qc){
+
+      observer.observe(
+        qc,
+        {
+          childList: true,
+          subtree: true
+        }
+      );
+
+    }
+
+  }
+
+
+  if(
+    document.readyState === "loading"
+  ){
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      start
+    );
+
+  }else{
+
+    start();
+
+  }
+
+})();
+</script>
+
+
+<script>
+/* =========================================================
+   SR PRODUCT COA - STANDALONE MANUFACTURING MENU
+   ========================================================= */
+
+(function(){
+
+  function esc(v){
+    if(typeof escapeHtml === "function"){
+      return escapeHtml(String(v || ""));
+    }
+
+    return String(v || "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
+
+  window.srOpenProductCOA = function(){
+
+    /*
+     * Hide all main sections.
+     */
+    document
+      .querySelectorAll("section")
+      .forEach(function(section){
+        section.classList.add("hidden");
+      });
+
+
+    const qcView =
+      document.getElementById(
+        "qcInspectionView"
+      );
+
+    if(!qcView){
+      alert("COA screen is not available.");
+      return;
+    }
+
+
+    qcView.classList.remove("hidden");
+
+
+    /*
+     * Keep navigation state separate from QC Inspection.
+     */
+    try{
+      window.currentView = "srProductCOA";
+    }catch(e){}
+
+
+    const box =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+
+    if(!box){
+      return;
+    }
+
+
+    box.innerHTML = `
+
+      <div class="flex items-center gap-3 mb-4">
+
+        <button
+          type="button"
+          onclick="srCloseProductCOA()"
+          class="w-10 h-10 rounded-full bg-white
+                 border flex items-center justify-center
+                 text-lg"
+        >
+          ←
+        </button>
+
+        <div>
+          <div class="font-bold text-lg">
+            SR PRODUCT COA
+          </div>
+
+          <div class="text-[10px] text-slate-400">
+            Search Product Certificate of Analysis
+          </div>
+        </div>
+
+      </div>
+
+
+      <div class="bg-white border rounded-2xl
+                  p-4 shadow-sm">
+
+        <div class="text-xs font-bold
+                    text-slate-500 mb-2">
+          BATCH NO
+        </div>
+
+
+        <input
+          id="srProductCOABatchInput"
+          type="text"
+          autocomplete="off"
+          placeholder="Enter Batch No"
+          class="w-full border rounded-xl
+                 px-3 py-3 text-sm outline-none
+                 focus:ring-2 focus:ring-indigo-200"
+        />
+
+
+        <button
+          type="button"
+          onclick="srProductCOASearch()"
+          class="w-full mt-3 py-3 rounded-xl
+                 bg-slate-900 text-white
+                 text-xs font-bold active:scale-95"
+        >
+          SEARCH
+        </button>
+
+
+        <div
+          id="srProductCOAResults"
+          class="mt-4 space-y-2"
+        ></div>
+
+      </div>
+
+    `;
+
+  };
+
+
+  window.srCloseProductCOA = function(){
+
+    const qcView =
+      document.getElementById(
+        "qcInspectionView"
+      );
+
+    if(qcView){
+      qcView.classList.add("hidden");
+    }
+
+
+    /*
+     * Return to Manufacturing/Home.
+     */
+    const homeView =
+      document.getElementById(
+        "homeView"
+      );
+
+    if(homeView){
+
+      homeView.classList.remove(
+        "hidden"
+      );
+
+    }
+
+
+    try{
+      window.currentView = "home";
+    }catch(e){}
+
+  };
+
+
+  window.srProductCOASearch = async function(){
+
+    const input =
+      document.getElementById(
+        "srProductCOABatchInput"
+      );
+
+    const results =
+      document.getElementById(
+        "srProductCOAResults"
+      );
+
+
+    if(!input || !results){
+      return;
+    }
+
+
+    const batchNo =
+      String(
+        input.value || ""
+      ).trim();
+
+
+    if(!batchNo){
+
+      results.innerHTML = `
+        <div class="border border-amber-200
+                    bg-amber-50 rounded-xl p-3
+                    text-xs text-amber-700">
+          Please enter Batch No.
+        </div>
+      `;
+
+      return;
+    }
+
+
+    results.innerHTML = `
+      <div class="border rounded-xl p-3
+                  text-xs text-slate-500">
+        Searching Batch
+        <b>${esc(batchNo)}</b>...
+      </div>
+    `;
+
+
+    try{
+
+      /*
+       * PRODUCT COA ONLY.
+       *
+       * Product = ON
+       * Application = OFF
+       */
+      const url =
+        "/api/method/sr_connect.www.home.sr_coa_search_batch"
+        + "?batch_no="
+        + encodeURIComponent(batchNo)
+        + "&product_coa=1"
+        + "&application_coa=0";
+
+
+      const response =
+        await fetch(url);
+
+
+      const json =
+        await response.json();
+
+
+      const data =
+        json && json.message
+          ? json.message
+          : json;
+
+
+      if(!data || data.success === false){
+
+        results.innerHTML = `
+          <div class="border border-rose-200
+                      bg-rose-50 rounded-xl p-3
+                      text-xs text-rose-700">
+            ${esc(
+              data && data.error
+                ? data.error
+                : "Unable to search COA."
+            )}
+          </div>
+        `;
+
+        return;
+      }
+
+
+      /*
+       * Batch DocType must exist.
+       */
+      if(!data.found){
+
+        results.innerHTML = `
+          <div class="border border-amber-200
+                      bg-amber-50 rounded-xl p-3
+                      text-xs text-amber-700">
+
+            Batch
+            <b>${esc(batchNo)}</b>
+            was not found in ERPNext Batch.
+
+          </div>
+        `;
+
+        return;
+      }
+
+
+      const rows =
+        Array.isArray(
+          data.quality_inspections
+        )
+          ? data.quality_inspections
+          : [];
+
+
+      if(!rows.length){
+
+        results.innerHTML = `
+
+          <div class="border rounded-xl
+                      bg-slate-50 p-4">
+
+            <div class="font-bold text-sm">
+              ${esc(
+                data.item_name ||
+                data.item_code ||
+                ""
+              )}
+            </div>
+
+            <div class="text-[10px]
+                        text-slate-400 mt-1">
+              Batch:
+              ${esc(data.batch_no || batchNo)}
+            </div>
+
+            <div class="text-xs text-slate-500 mt-3">
+              No completed Product COA found.
+            </div>
+
+          </div>
+
+        `;
+
+        return;
+      }
+
+
+      let out = `
+
+        <div class="border rounded-xl
+                    bg-slate-50 p-4">
+
+          <div class="font-bold text-sm">
+            ${esc(
+              data.item_name ||
+              data.item_code ||
+              ""
+            )}
+          </div>
+
+          <div class="text-[10px]
+                      text-slate-400 mt-1">
+            Batch:
+            <b>${esc(
+              data.batch_no || batchNo
+            )}</b>
+          </div>
+
+        </div>
+
+      `;
+
+
+      rows.forEach(function(row){
+
+        const qi =
+          String(
+            row.qi_name ||
+            row.name ||
+            ""
+          ).trim();
+
+
+        if(!qi){
+          return;
+        }
+
+
+        out += `
+
+          <button
+            type="button"
+            onclick="srProductCOAOpenPrint('${esc(qi)}')"
+            class="w-full text-left
+                   border rounded-xl p-4
+                   bg-white shadow-sm
+                   active:scale-[0.99]"
+          >
+
+            <div class="flex items-center
+                        justify-between">
+
+              <div>
+
+                <div class="font-bold text-sm
+                            text-indigo-700">
+                  PRODUCT COA
+                </div>
+
+                <div class="text-[10px]
+                            text-slate-400 mt-1">
+                  Quality Inspection:
+                  ${esc(qi)}
+                </div>
+
+              </div>
+
+              <span class="text-indigo-600
+                           font-bold text-xl">
+                ›
+              </span>
+
+            </div>
+
+          </button>
+
+        `;
+
+      });
+
+
+      results.innerHTML = out;
+
+    }catch(err){
+
+      console.error(
+        "SR PRODUCT COA SEARCH:",
+        err
+      );
+
+
+      results.innerHTML = `
+        <div class="border border-rose-200
+                    bg-rose-50 rounded-xl p-3
+                    text-xs text-rose-700">
+          COA search failed.
+        </div>
+      `;
+
+    }
+
+  };
+
+
+  window.srProductCOAOpenPrint = function(qiName){
+
+    qiName =
+      String(qiName || "").trim();
+
+
+    if(!qiName){
+      alert("Quality Inspection not found.");
+      return;
+    }
+
+
+    /*
+     * No trigger_print=1.
+     * Opens Certificate of Analysis preview.
+     */
+    const url =
+      "/printview"
+      + "?doctype="
+      + encodeURIComponent(
+          "Quality Inspection"
+        )
+      + "&name="
+      + encodeURIComponent(qiName)
+      + "&format="
+      + encodeURIComponent(
+          "Certificate of Analysis"
+        );
+
+
+    window.open(
+      url,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+  };
+
+
+  /*
+   * =======================================================
+   * REMOVE OLD COA SEARCH FROM INSIDE QC INSPECTION
+   * =======================================================
+   */
+  function removeOldQCSearch(){
+
+    const box =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+    if(!box){
+      return;
+    }
+
+
+    /*
+     * Old IDs from previous patches.
+     */
+    [
+      "srDistributorCOASearch",
+      "srCOABatchInput",
+      "srProductCOABatchInput"
+    ].forEach(function(id){
+
+      box
+        .querySelectorAll("#" + id)
+        .forEach(function(el){
+
+          /*
+           * For the input, remove its parent card.
+           */
+          let parent = el;
+
+          while(
+            parent &&
+            parent !== box &&
+            !(
+              parent.classList.contains("bg-white") &&
+              parent.classList.contains("border") &&
+              parent.classList.contains("rounded-2xl")
+            )
+          ){
+
+            parent =
+              parent.parentElement;
+
+          }
+
+
+          if(
+            parent &&
+            parent !== box
+          ){
+
+            parent.remove();
+
+          }else{
+
+            el.remove();
+
+          }
+
+        });
+
+    });
+
+
+    /*
+     * Remove cards whose heading is the old
+     * "COA SEARCH" UI.
+     */
+    box
+      .querySelectorAll("div")
+      .forEach(function(el){
+
+        const text =
+          String(
+            el.innerText || ""
+          ).trim();
+
+
+        if(
+          text.startsWith("COA SEARCH") &&
+          el.querySelector(
+            "input"
+          ) &&
+          el.querySelector(
+            "button"
+          )
+        ){
+
+          /*
+           * Only remove if it is actually a
+           * COA search card, not some unrelated card.
+           */
+          if(
+            text.includes("Batch No") ||
+            text.includes("Search Product")
+          ){
+
+            const parent =
+              el.closest(
+                ".bg-white.border.rounded-2xl"
+              );
+
+
+            if(parent){
+              parent.remove();
+            }
+
+          }
+
+        }
+
+      });
+
+  }
+
+
+  const observer =
+    new MutationObserver(function(){
+
+      setTimeout(
+        removeOldQCSearch,
+        20
+      );
+
+    });
+
+
+  function start(){
+
+    const target =
+      document.getElementById(
+        "qcInspectionContent"
+      ) || document.body;
+
+
+    observer.observe(
+      target,
+      {
+        childList: true,
+        subtree: true
+      }
+    );
+
+  }
+
+
+  if(
+    document.readyState === "loading"
+  ){
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      start
+    );
+
+  }else{
+
+    start();
+
+  }
+
+})();
+</script>
+
+
+
+<script>
+/* =========================================================
+   SR PRODUCT COA - FINAL STANDALONE VERSION
+   ========================================================= */
+
+(function(){
+
+  /*
+   * -------------------------------------------------------
+   * Remove ONLY old COA UI from QC Inspection.
+   * Do NOT touch the new standalone COA screen.
+   * -------------------------------------------------------
+   */
+  function removeOldQCProductCOA(){
+
+    const box =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+    if(!box){
+      return;
+    }
+
+
+    /*
+     * Old COA IDs.
+     */
+    [
+      "srDistributorCOASearch",
+      "srCOABatchInput",
+      "srCOASearchBody",
+      "srCOAResults",
+      "srCOAProductToggle",
+      "srCOAApplicationToggle",
+      "srQCTopCOAToggle"
+    ].forEach(function(id){
+
+      box
+        .querySelectorAll("#" + id)
+        .forEach(function(el){
+
+          const card =
+            el.closest(
+              ".bg-white.border.rounded-2xl"
+            );
+
+          if(card){
+            card.remove();
+          }else{
+            el.remove();
+          }
+
+        });
+
+    });
+
+
+    /*
+     * Remove old COA SEARCH cards that have
+     * Batch No + Search.
+     */
+    box
+      .querySelectorAll(
+        ".bg-white.border.rounded-2xl"
+      )
+      .forEach(function(card){
+
+        const text =
+          String(
+            card.innerText || ""
+          )
+          .trim()
+          .toUpperCase();
+
+
+        if(
+          text.includes("COA SEARCH") &&
+          text.includes("BATCH NO") &&
+          text.includes("SEARCH")
+        ){
+
+          card.remove();
+
+        }
+
+      });
+
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * OPEN STANDALONE SR PRODUCT COA
+   * -------------------------------------------------------
+   */
+  window.srOpenProductCOA = function(){
+
+    /*
+     * Hide normal application sections.
+     */
+    document
+      .querySelectorAll("section")
+      .forEach(function(section){
+
+        section.classList.add(
+          "hidden"
+        );
+
+      });
+
+
+    const view =
+      document.getElementById(
+        "srProductCOAView"
+      );
+
+
+    if(!view){
+
+      alert(
+        "SR PRODUCT COA screen not found."
+      );
+
+      return;
+
+    }
+
+
+    view.classList.remove(
+      "hidden"
+    );
+
+
+    const content =
+      document.getElementById(
+        "srProductCOAContent"
+      );
+
+
+    if(!content){
+      return;
+    }
+
+
+    content.innerHTML = `
+
+      <div class="flex items-center gap-3 mb-4">
+
+        <button
+          type="button"
+          onclick="srCloseProductCOA()"
+          class="w-10 h-10 rounded-full
+                 bg-white border
+                 flex items-center justify-center
+                 text-lg"
+        >
+          ←
+        </button>
+
+
+        <div>
+
+          <div
+            class="font-bold text-lg"
+          >
+            SR PRODUCT COA
+          </div>
+
+
+          <div
+            class="text-[10px] text-slate-400 mt-1"
+          >
+            Search Product Certificate of Analysis
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="bg-white border rounded-2xl
+               p-4 shadow-sm"
+      >
+
+        <label
+          class="block text-[10px]
+                 font-bold text-slate-500 mb-2"
+        >
+          BATCH NO
+        </label>
+
+
+        <input
+          id="srStandaloneCOABatchInput"
+          type="text"
+          autocomplete="off"
+          placeholder="Enter Batch No"
+          class="w-full border rounded-xl
+                 px-3 py-3 text-sm
+                 outline-none
+                 focus:ring-2
+                 focus:ring-indigo-200"
+        />
+
+
+        <button
+          type="button"
+          onclick="srStandaloneProductCOASearch()"
+          class="w-full mt-3 py-3 rounded-xl
+                 bg-slate-900 text-white
+                 text-xs font-bold
+                 active:scale-95"
+        >
+          SEARCH
+        </button>
+
+
+        <div
+          id="srStandaloneCOAResults"
+          class="mt-4 space-y-2"
+        ></div>
+
+      </div>
+
+    `;
+
+  };
+
+
+  /*
+   * -------------------------------------------------------
+   * CLOSE STANDALONE COA
+   * -------------------------------------------------------
+   */
+  window.srCloseProductCOA = function(){
+
+    const view =
+      document.getElementById(
+        "srProductCOAView"
+      );
+
+    if(view){
+      view.classList.add(
+        "hidden"
+      );
+    }
+
+
+    const home =
+      document.getElementById(
+        "homeView"
+      );
+
+    if(home){
+      home.classList.remove(
+        "hidden"
+      );
+    }
+
+  };
+
+
+  /*
+   * -------------------------------------------------------
+   * SEARCH PRODUCT COA
+   * -------------------------------------------------------
+   */
+  window.srStandaloneProductCOASearch =
+    async function(){
+
+      const input =
+        document.getElementById(
+          "srStandaloneCOABatchInput"
+        );
+
+
+      const results =
+        document.getElementById(
+          "srStandaloneCOAResults"
+        );
+
+
+      if(!input || !results){
+        return;
+      }
+
+
+      const batchNo =
+        String(
+          input.value || ""
+        ).trim();
+
+
+      if(!batchNo){
+
+        results.innerHTML = `
+
+          <div
+            class="border border-amber-200
+                   bg-amber-50 rounded-xl
+                   p-3 text-xs
+                   text-amber-700"
+          >
+            Please enter Batch No.
+          </div>
+
+        `;
+
+        return;
+
+      }
+
+
+      results.innerHTML = `
+
+        <div
+          class="border rounded-xl
+                 bg-slate-50 p-3
+                 text-xs text-slate-500"
+        >
+          Searching Batch
+          <b>${srCOAEscape(batchNo)}</b>...
+        </div>
+
+      `;
+
+
+      try{
+
+        /*
+         * PRODUCT ONLY.
+         *
+         * Product COA = ON
+         * Application COA = OFF
+         */
+        const url =
+          "/api/method/sr_connect.www.home.sr_coa_search_batch"
+          + "?batch_no="
+          + encodeURIComponent(batchNo)
+          + "&product_coa=1"
+          + "&application_coa=0";
+
+
+        const response =
+          await fetch(url);
+
+
+        const json =
+          await response.json();
+
+
+        const data =
+          json && json.message
+            ? json.message
+            : json;
+
+
+        if(!data){
+
+          results.innerHTML = `
+            <div class="border border-rose-200
+                        bg-rose-50 rounded-xl p-3
+                        text-xs text-rose-700">
+              COA search failed.
+            </div>
+          `;
+
+          return;
+
+        }
+
+
+        if(!data.found){
+
+          results.innerHTML = `
+
+            <div
+              class="border border-amber-200
+                     bg-amber-50 rounded-xl
+                     p-3 text-xs
+                     text-amber-700"
+            >
+              Batch
+              <b>${srCOAEscape(batchNo)}</b>
+              was not found in ERPNext Batch.
+            </div>
+
+          `;
+
+          return;
+
+        }
+
+
+        const rows =
+          Array.isArray(
+            data.quality_inspections
+          )
+            ? data.quality_inspections
+            : [];
+
+
+        if(!rows.length){
+
+          results.innerHTML = `
+
+            <div
+              class="border rounded-xl
+                     bg-slate-50 p-4"
+            >
+
+              <div
+                class="font-bold text-sm"
+              >
+                ${srCOAEscape(
+                  data.item_name ||
+                  data.item_code ||
+                  ""
+                )}
+              </div>
+
+
+              <div
+                class="text-[10px]
+                       text-slate-400 mt-1"
+              >
+                Batch:
+                ${srCOAEscape(
+                  data.batch_no ||
+                  batchNo
+                )}
+              </div>
+
+
+              <div
+                class="text-xs
+                       text-slate-500 mt-3"
+              >
+                No completed Product COA found.
+              </div>
+
+            </div>
+
+          `;
+
+          return;
+
+        }
+
+
+        let output = `
+
+          <div
+            class="border rounded-xl
+                   bg-slate-50 p-4"
+          >
+
+            <div
+              class="font-bold text-sm"
+            >
+              ${srCOAEscape(
+                data.item_name ||
+                data.item_code ||
+                ""
+              )}
+            </div>
+
+
+            <div
+              class="text-[10px]
+                     text-slate-400 mt-1"
+            >
+              Batch:
+              <b>
+                ${srCOAEscape(
+                  data.batch_no ||
+                  batchNo
+                )}
+              </b>
+            </div>
+
+          </div>
+
+        `;
+
+
+        rows.forEach(function(row){
+
+          const qi =
+            String(
+              row.qi_name ||
+              row.name ||
+              ""
+            ).trim();
+
+
+          if(!qi){
+            return;
+          }
+
+
+          output += `
+
+            <button
+              type="button"
+              onclick="srStandaloneProductCOAPrint(
+                '${srCOAAttr(qi)}'
+              )"
+              class="w-full text-left
+                     border rounded-xl
+                     p-4 bg-white
+                     shadow-sm
+                     active:scale-[0.99]"
+            >
+
+              <div
+                class="flex items-center
+                       justify-between"
+              >
+
+                <div>
+
+                  <div
+                    class="font-bold text-sm
+                           text-indigo-700"
+                  >
+                    PRODUCT COA
+                  </div>
+
+
+                  <div
+                    class="text-[10px]
+                           text-slate-400 mt-1"
+                  >
+                    Quality Inspection:
+                    ${srCOAEscape(qi)}
+                  </div>
+
+                </div>
+
+
+                <span
+                  class="text-indigo-600
+                         font-bold text-xl"
+                >
+                  ›
+                </span>
+
+              </div>
+
+            </button>
+
+          `;
+
+        });
+
+
+        results.innerHTML =
+          output;
+
+
+      }catch(err){
+
+        console.error(
+          "SR PRODUCT COA SEARCH ERROR:",
+          err
+        );
+
+
+        results.innerHTML = `
+
+          <div
+            class="border border-rose-200
+                   bg-rose-50 rounded-xl
+                   p-3 text-xs
+                   text-rose-700"
+          >
+            COA search failed.
+          </div>
+
+        `;
+
+      }
+
+    };
+
+
+  /*
+   * -------------------------------------------------------
+   * PRINT
+   * -------------------------------------------------------
+   */
+  window.srStandaloneProductCOAPrint =
+    function(qiName){
+
+      qiName =
+        String(qiName || "").trim();
+
+
+      if(!qiName){
+
+        alert(
+          "Quality Inspection not found."
+        );
+
+        return;
+
+      }
+
+
+      const url =
+        "/printview"
+        + "?doctype="
+        + encodeURIComponent(
+            "Quality Inspection"
+          )
+        + "&name="
+        + encodeURIComponent(
+            qiName
+          )
+        + "&format="
+        + encodeURIComponent(
+            "Certificate of Analysis"
+          );
+
+
+      /*
+       * No trigger_print=1
+       */
+      window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+    };
+
+
+  function srCOAEscape(value){
+
+    return String(value || "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+
+  }
+
+
+  function srCOAAttr(value){
+
+    return String(value || "")
+      .replace(/\\/g,"\\\\")
+      .replace(/'/g,"\\'");
+
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * OBSERVE QC ONLY
+   *
+   * Never touch srProductCOAView.
+   * -------------------------------------------------------
+   */
+  const observer =
+    new MutationObserver(function(){
+
+      setTimeout(
+        removeOldQCProductCOA,
+        20
+      );
+
+    });
+
+
+  function start(){
+
+    const qc =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+
+    if(qc){
+
+      observer.observe(
+        qc,
+        {
+          childList: true,
+          subtree: true
+        }
+      );
+
+    }
+
+  }
+
+
+  if(
+    document.readyState === "loading"
+  ){
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      start
+    );
+
+  }else{
+
+    start();
+
+  }
+
+})();
+</script>
+
+
+<script>
+/* =========================================================
+   SR PRODUCT COA - STANDALONE MANUFACTURING MENU
+   ========================================================= */
+
+(function(){
+
+  function esc(v){
+    if(typeof escapeHtml === "function"){
+      return escapeHtml(String(v || ""));
+    }
+
+    return String(v || "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
+
+  window.srOpenProductCOA = function(){
+
+    /*
+     * Hide all main sections.
+     */
+    document
+      .querySelectorAll("section")
+      .forEach(function(section){
+        section.classList.add("hidden");
+      });
+
+
+    const qcView =
+      document.getElementById(
+        "qcInspectionView"
+      );
+
+    if(!qcView){
+      alert("COA screen is not available.");
+      return;
+    }
+
+
+    qcView.classList.remove("hidden");
+
+
+    /*
+     * Keep navigation state separate from QC Inspection.
+     */
+    try{
+      window.currentView = "srProductCOA";
+    }catch(e){}
+
+
+    const box =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+
+    if(!box){
+      return;
+    }
+
+
+    box.innerHTML = `
+
+      <div class="flex items-center gap-3 mb-4">
+
+        <button
+          type="button"
+          onclick="srCloseProductCOA()"
+          class="w-10 h-10 rounded-full bg-white
+                 border flex items-center justify-center
+                 text-lg"
+        >
+          ←
+        </button>
+
+        <div>
+          <div class="font-bold text-lg">
+            SR PRODUCT COA
+          </div>
+
+          <div class="text-[10px] text-slate-400">
+            Search Product Certificate of Analysis
+          </div>
+        </div>
+
+      </div>
+
+
+      <div class="bg-white border rounded-2xl
+                  p-4 shadow-sm">
+
+        <div class="text-xs font-bold
+                    text-slate-500 mb-2">
+          BATCH NO
+        </div>
+
+
+        <input
+          id="srProductCOABatchInput"
+          type="text"
+          autocomplete="off"
+          placeholder="Enter Batch No"
+          class="w-full border rounded-xl
+                 px-3 py-3 text-sm outline-none
+                 focus:ring-2 focus:ring-indigo-200"
+        />
+
+
+        <button
+          type="button"
+          onclick="srProductCOASearch()"
+          class="w-full mt-3 py-3 rounded-xl
+                 bg-slate-900 text-white
+                 text-xs font-bold active:scale-95"
+        >
+          SEARCH
+        </button>
+
+
+        <div
+          id="srProductCOAResults"
+          class="mt-4 space-y-2"
+        ></div>
+
+      </div>
+
+    `;
+
+  };
+
+
+  window.srCloseProductCOA = function(){
+
+    const qcView =
+      document.getElementById(
+        "qcInspectionView"
+      );
+
+    if(qcView){
+      qcView.classList.add("hidden");
+    }
+
+
+    /*
+     * Return to Manufacturing/Home.
+     */
+    const homeView =
+      document.getElementById(
+        "homeView"
+      );
+
+    if(homeView){
+
+      homeView.classList.remove(
+        "hidden"
+      );
+
+    }
+
+
+    try{
+      window.currentView = "home";
+    }catch(e){}
+
+  };
+
+
+  window.srProductCOASearch = async function(){
+
+    const input =
+      document.getElementById(
+        "srProductCOABatchInput"
+      );
+
+    const results =
+      document.getElementById(
+        "srProductCOAResults"
+      );
+
+
+    if(!input || !results){
+      return;
+    }
+
+
+    const batchNo =
+      String(
+        input.value || ""
+      ).trim();
+
+
+    if(!batchNo){
+
+      results.innerHTML = `
+        <div class="border border-amber-200
+                    bg-amber-50 rounded-xl p-3
+                    text-xs text-amber-700">
+          Please enter Batch No.
+        </div>
+      `;
+
+      return;
+    }
+
+
+    results.innerHTML = `
+      <div class="border rounded-xl p-3
+                  text-xs text-slate-500">
+        Searching Batch
+        <b>${esc(batchNo)}</b>...
+      </div>
+    `;
+
+
+    try{
+
+      /*
+       * PRODUCT COA ONLY.
+       *
+       * Product = ON
+       * Application = OFF
+       */
+      const url =
+        "/api/method/sr_connect.www.home.sr_coa_search_batch"
+        + "?batch_no="
+        + encodeURIComponent(batchNo)
+        + "&product_coa=1"
+        + "&application_coa=0";
+
+
+      const response =
+        await fetch(url);
+
+
+      const json =
+        await response.json();
+
+
+      const data =
+        json && json.message
+          ? json.message
+          : json;
+
+
+      if(!data || data.success === false){
+
+        results.innerHTML = `
+          <div class="border border-rose-200
+                      bg-rose-50 rounded-xl p-3
+                      text-xs text-rose-700">
+            ${esc(
+              data && data.error
+                ? data.error
+                : "Unable to search COA."
+            )}
+          </div>
+        `;
+
+        return;
+      }
+
+
+      /*
+       * Batch DocType must exist.
+       */
+      if(!data.found){
+
+        results.innerHTML = `
+          <div class="border border-amber-200
+                      bg-amber-50 rounded-xl p-3
+                      text-xs text-amber-700">
+
+            Batch
+            <b>${esc(batchNo)}</b>
+            was not found in ERPNext Batch.
+
+          </div>
+        `;
+
+        return;
+      }
+
+
+      const rows =
+        Array.isArray(
+          data.quality_inspections
+        )
+          ? data.quality_inspections
+          : [];
+
+
+      if(!rows.length){
+
+        results.innerHTML = `
+
+          <div class="border rounded-xl
+                      bg-slate-50 p-4">
+
+            <div class="font-bold text-sm">
+              ${esc(
+                data.item_name ||
+                data.item_code ||
+                ""
+              )}
+            </div>
+
+            <div class="text-[10px]
+                        text-slate-400 mt-1">
+              Batch:
+              ${esc(data.batch_no || batchNo)}
+            </div>
+
+            <div class="text-xs text-slate-500 mt-3">
+              No completed Product COA found.
+            </div>
+
+          </div>
+
+        `;
+
+        return;
+      }
+
+
+      let out = `
+
+        <div class="border rounded-xl
+                    bg-slate-50 p-4">
+
+          <div class="font-bold text-sm">
+            ${esc(
+              data.item_name ||
+              data.item_code ||
+              ""
+            )}
+          </div>
+
+          <div class="text-[10px]
+                      text-slate-400 mt-1">
+            Batch:
+            <b>${esc(
+              data.batch_no || batchNo
+            )}</b>
+          </div>
+
+        </div>
+
+      `;
+
+
+      rows.forEach(function(row){
+
+        const qi =
+          String(
+            row.qi_name ||
+            row.name ||
+            ""
+          ).trim();
+
+
+        if(!qi){
+          return;
+        }
+
+
+        out += `
+
+          <button
+            type="button"
+            onclick="srProductCOAOpenPrint('${esc(qi)}')"
+            class="w-full text-left
+                   border rounded-xl p-4
+                   bg-white shadow-sm
+                   active:scale-[0.99]"
+          >
+
+            <div class="flex items-center
+                        justify-between">
+
+              <div>
+
+                <div class="font-bold text-sm
+                            text-indigo-700">
+                  PRODUCT COA
+                </div>
+
+                <div class="text-[10px]
+                            text-slate-400 mt-1">
+                  Quality Inspection:
+                  ${esc(qi)}
+                </div>
+
+              </div>
+
+              <span class="text-indigo-600
+                           font-bold text-xl">
+                ›
+              </span>
+
+            </div>
+
+          </button>
+
+        `;
+
+      });
+
+
+      results.innerHTML = out;
+
+    }catch(err){
+
+      console.error(
+        "SR PRODUCT COA SEARCH:",
+        err
+      );
+
+
+      results.innerHTML = `
+        <div class="border border-rose-200
+                    bg-rose-50 rounded-xl p-3
+                    text-xs text-rose-700">
+          COA search failed.
+        </div>
+      `;
+
+    }
+
+  };
+
+
+  window.srProductCOAOpenPrint = function(qiName){
+
+    qiName =
+      String(qiName || "").trim();
+
+
+    if(!qiName){
+      alert("Quality Inspection not found.");
+      return;
+    }
+
+
+    /*
+     * No trigger_print=1.
+     * Opens Certificate of Analysis preview.
+     */
+    const url =
+      "/printview"
+      + "?doctype="
+      + encodeURIComponent(
+          "Quality Inspection"
+        )
+      + "&name="
+      + encodeURIComponent(qiName)
+      + "&format="
+      + encodeURIComponent(
+          "Certificate of Analysis"
+        );
+
+
+    window.open(
+      url,
+      "_blank",
+      "noopener,noreferrer"
+    );
+
+  };
+
+
+  /*
+   * =======================================================
+   * REMOVE OLD COA SEARCH FROM INSIDE QC INSPECTION
+   * =======================================================
+   */
+  function removeOldQCSearch(){
+
+    const box =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+    if(!box){
+      return;
+    }
+
+
+    /*
+     * Old IDs from previous patches.
+     */
+    [
+      "srDistributorCOASearch",
+      "srCOABatchInput",
+      "srProductCOABatchInput"
+    ].forEach(function(id){
+
+      box
+        .querySelectorAll("#" + id)
+        .forEach(function(el){
+
+          /*
+           * For the input, remove its parent card.
+           */
+          let parent = el;
+
+          while(
+            parent &&
+            parent !== box &&
+            !(
+              parent.classList.contains("bg-white") &&
+              parent.classList.contains("border") &&
+              parent.classList.contains("rounded-2xl")
+            )
+          ){
+
+            parent =
+              parent.parentElement;
+
+          }
+
+
+          if(
+            parent &&
+            parent !== box
+          ){
+
+            parent.remove();
+
+          }else{
+
+            el.remove();
+
+          }
+
+        });
+
+    });
+
+
+    /*
+     * Remove cards whose heading is the old
+     * "COA SEARCH" UI.
+     */
+    box
+      .querySelectorAll("div")
+      .forEach(function(el){
+
+        const text =
+          String(
+            el.innerText || ""
+          ).trim();
+
+
+        if(
+          text.startsWith("COA SEARCH") &&
+          el.querySelector(
+            "input"
+          ) &&
+          el.querySelector(
+            "button"
+          )
+        ){
+
+          /*
+           * Only remove if it is actually a
+           * COA search card, not some unrelated card.
+           */
+          if(
+            text.includes("Batch No") ||
+            text.includes("Search Product")
+          ){
+
+            const parent =
+              el.closest(
+                ".bg-white.border.rounded-2xl"
+              );
+
+
+            if(parent){
+              parent.remove();
+            }
+
+          }
+
+        }
+
+      });
+
+  }
+
+
+  const observer =
+    new MutationObserver(function(){
+
+      setTimeout(
+        removeOldQCSearch,
+        20
+      );
+
+    });
+
+
+  function start(){
+
+    const target =
+      document.getElementById(
+        "qcInspectionContent"
+      ) || document.body;
+
+
+    observer.observe(
+      target,
+      {
+        childList: true,
+        subtree: true
+      }
+    );
+
+  }
+
+
+  if(
+    document.readyState === "loading"
+  ){
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      start
+    );
+
+  }else{
+
+    start();
+
+  }
+
+})();
+</script>
+
+
+
+<script>
+/* =========================================================
+   SR PRODUCT COA - FINAL STANDALONE VERSION
+   ========================================================= */
+
+(function(){
+
+  /*
+   * -------------------------------------------------------
+   * Remove ONLY old COA UI from QC Inspection.
+   * Do NOT touch the new standalone COA screen.
+   * -------------------------------------------------------
+   */
+  function removeOldQCProductCOA(){
+
+    const box =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+    if(!box){
+      return;
+    }
+
+
+    /*
+     * Old COA IDs.
+     */
+    [
+      "srDistributorCOASearch",
+      "srCOABatchInput",
+      "srCOASearchBody",
+      "srCOAResults",
+      "srCOAProductToggle",
+      "srCOAApplicationToggle",
+      "srQCTopCOAToggle"
+    ].forEach(function(id){
+
+      box
+        .querySelectorAll("#" + id)
+        .forEach(function(el){
+
+          const card =
+            el.closest(
+              ".bg-white.border.rounded-2xl"
+            );
+
+          if(card){
+            card.remove();
+          }else{
+            el.remove();
+          }
+
+        });
+
+    });
+
+
+    /*
+     * Remove old COA SEARCH cards that have
+     * Batch No + Search.
+     */
+    box
+      .querySelectorAll(
+        ".bg-white.border.rounded-2xl"
+      )
+      .forEach(function(card){
+
+        const text =
+          String(
+            card.innerText || ""
+          )
+          .trim()
+          .toUpperCase();
+
+
+        if(
+          text.includes("COA SEARCH") &&
+          text.includes("BATCH NO") &&
+          text.includes("SEARCH")
+        ){
+
+          card.remove();
+
+        }
+
+      });
+
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * OPEN STANDALONE SR PRODUCT COA
+   * -------------------------------------------------------
+   */
+  window.srOpenProductCOA = function(){
+
+    /*
+     * Hide normal application sections.
+     */
+    document
+      .querySelectorAll("section")
+      .forEach(function(section){
+
+        section.classList.add(
+          "hidden"
+        );
+
+      });
+
+
+    const view =
+      document.getElementById(
+        "srProductCOAView"
+      );
+
+
+    if(!view){
+
+      alert(
+        "SR PRODUCT COA screen not found."
+      );
+
+      return;
+
+    }
+
+
+    view.classList.remove(
+      "hidden"
+    );
+
+
+    const content =
+      document.getElementById(
+        "srProductCOAContent"
+      );
+
+
+    if(!content){
+      return;
+    }
+
+
+    content.innerHTML = `
+
+      <div class="flex items-center gap-3 mb-4">
+
+        <button
+          type="button"
+          onclick="srCloseProductCOA()"
+          class="w-10 h-10 rounded-full
+                 bg-white border
+                 flex items-center justify-center
+                 text-lg"
+        >
+          ←
+        </button>
+
+
+        <div>
+
+          <div
+            class="font-bold text-lg"
+          >
+            SR PRODUCT COA
+          </div>
+
+
+          <div
+            class="text-[10px] text-slate-400 mt-1"
+          >
+            Search Product Certificate of Analysis
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="bg-white border rounded-2xl
+               p-4 shadow-sm"
+      >
+
+        <label
+          class="block text-[10px]
+                 font-bold text-slate-500 mb-2"
+        >
+          BATCH NO
+        </label>
+
+
+        <input
+          id="srStandaloneCOABatchInput"
+          type="text"
+          autocomplete="off"
+          placeholder="Enter Batch No"
+          class="w-full border rounded-xl
+                 px-3 py-3 text-sm
+                 outline-none
+                 focus:ring-2
+                 focus:ring-indigo-200"
+        />
+
+
+        <button
+          type="button"
+          onclick="srStandaloneProductCOASearch()"
+          class="w-full mt-3 py-3 rounded-xl
+                 bg-slate-900 text-white
+                 text-xs font-bold
+                 active:scale-95"
+        >
+          SEARCH
+        </button>
+
+
+        <div
+          id="srStandaloneCOAResults"
+          class="mt-4 space-y-2"
+        ></div>
+
+      </div>
+
+    `;
+
+  };
+
+
+  /*
+   * -------------------------------------------------------
+   * CLOSE STANDALONE COA
+   * -------------------------------------------------------
+   */
+  window.srCloseProductCOA = function(){
+
+    const view =
+      document.getElementById(
+        "srProductCOAView"
+      );
+
+    if(view){
+      view.classList.add(
+        "hidden"
+      );
+    }
+
+
+    const home =
+      document.getElementById(
+        "homeView"
+      );
+
+    if(home){
+      home.classList.remove(
+        "hidden"
+      );
+    }
+
+  };
+
+
+  /*
+   * -------------------------------------------------------
+   * SEARCH PRODUCT COA
+   * -------------------------------------------------------
+   */
+  window.srStandaloneProductCOASearch = async function(){
+
+  const input =
+    document.getElementById("srStandaloneCOABatchInput");
+
+  const results =
+    document.getElementById("srStandaloneCOAResults");
+
+  if(!input || !results){
+    return;
+  }
+
+  const batchNo =
+    String(input.value || "").trim();
+
+  if(!batchNo){
+    results.innerHTML =
+      '<div class="text-sm text-slate-500">Please enter Batch No.</div>';
+    return;
+  }
+
+  /*
+   * Completed Inspection switches are stored here.
+   *
+   * DEFAULT:
+   * Product      = ON
+   * Application  = OFF
+   */
+  let coaState = {};
+
+  try{
+    const raw =
+      localStorage.getItem("srQCCOAState");
+
+    if(raw){
+      coaState = JSON.parse(raw) || {};
+    }
+  }catch(e){
+    coaState = {};
+  }
+
+  const productKey =
+    "product:" + batchNo;
+
+  const applicationKey =
+    "application:" + batchNo;
+
+  const productEnabled =
+    Object.prototype.hasOwnProperty.call(
+      coaState,
+      productKey
+    )
+      ? (coaState[productKey] ? 1 : 0)
+      : 1;
+
+  const applicationEnabled =
+    Object.prototype.hasOwnProperty.call(
+      coaState,
+      applicationKey
+    )
+      ? (coaState[applicationKey] ? 1 : 0)
+      : 0;
+
+  results.innerHTML =
+    '<div class="text-sm text-slate-500">Searching...</div>';
+
+  try{
+
+    const url =
+      "/api/method/sr_connect.www.home.sr_coa_search_batch"
+      + "?batch_no="
+      + encodeURIComponent(batchNo)
+      + "&product_coa="
+      + productEnabled
+      + "&application_coa="
+      + applicationEnabled;
+
+    const response =
+      await fetch(url, {
+        credentials: "same-origin"
+      });
+
+    const payload =
+      await response.json();
+
+    const data =
+      payload && payload.message
+        ? payload.message
+        : payload;
+
+    if(
+      !data ||
+      data.success === false ||
+      !data.found
+    ){
+      results.innerHTML =
+        '<div class="text-sm text-slate-500">No completed COA found.</div>';
+      return;
+    }
+
+    const rows =
+      Array.isArray(data.quality_inspections)
+        ? data.quality_inspections
+        : [];
+
+    if(!rows.length){
+      results.innerHTML =
+        '<div class="text-sm text-slate-500">No completed COA found.</div>';
+      return;
+    }
+
+    results.innerHTML =
+      rows.map(function(row){
+
+        const category =
+          String(row.category || "")
+            .trim()
+            .toLowerCase();
+
+        const isApplication =
+          category === "application" ||
+          category === "quality";
+
+        const label =
+          isApplication
+            ? "APPLICATION COA"
+            : "PRODUCT COA";
+
+        const labelClass =
+          isApplication
+            ? "text-emerald-700"
+            : "text-indigo-700";
+
+        const qiName =
+          String(
+            row.qi_name ||
+            row.name ||
+            ""
+          ).trim();
+
+        const itemName =
+          String(
+            row.item_name ||
+            data.item_name ||
+            row.item_code ||
+            data.item_code ||
+            ""
+          );
+
+        const batch =
+          String(
+            row.batch_no ||
+            data.batch_no ||
+            batchNo
+          );
+
+        return `
+          <button
+            type="button"
+            class="w-full text-left border rounded-xl p-4 mb-3 bg-white hover:bg-slate-50 transition"
+            onclick="srStandaloneProductCOAPrint('${encodeURIComponent(qiName)}')"
+          >
+            <div class="text-xs font-bold ${labelClass}">
+              ${label}
+            </div>
+
+            <div class="mt-2 text-sm font-semibold text-slate-900">
+              ${escapeHtml(itemName)}
+            </div>
+
+            <div class="mt-1 text-xs text-slate-500">
+              Batch No: ${escapeHtml(batch)}
+            </div>
+
+            <div class="mt-1 text-xs text-slate-500">
+              Quality Inspection: ${escapeHtml(qiName)}
+            </div>
+          </button>
+        `;
+
+      }).join("");
+
+  }catch(err){
+
+    console.error(
+      "SR PRODUCT COA SEARCH ERROR:",
+      err
+    );
+
+    results.innerHTML =
+      '<div class="text-sm text-red-600">COA search failed.</div>';
+  }
+};;
+
+
+  /*
+   * -------------------------------------------------------
+   * PRINT
+   * -------------------------------------------------------
+   */
+  window.srStandaloneProductCOAPrint =
+    function(qiName){
+
+      qiName =
+        String(qiName || "").trim();
+
+
+      if(!qiName){
+
+        alert(
+          "Quality Inspection not found."
+        );
+
+        return;
+
+      }
+
+
+      const url =
+        "/printview"
+        + "?doctype="
+        + encodeURIComponent(
+            "Quality Inspection"
+          )
+        + "&name="
+        + encodeURIComponent(
+            qiName
+          )
+        + "&format="
+        + encodeURIComponent(
+            "Certificate of Analysis"
+          );
+
+
+      /*
+       * No trigger_print=1
+       */
+      window.open(
+        url,
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+    };
+
+
+  function srCOAEscape(value){
+
+    return String(value || "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+
+  }
+
+
+  function srCOAAttr(value){
+
+    return String(value || "")
+      .replace(/\\/g,"\\\\")
+      .replace(/'/g,"\\'");
+
+  }
+
+
+  /*
+   * -------------------------------------------------------
+   * OBSERVE QC ONLY
+   *
+   * Never touch srProductCOAView.
+   * -------------------------------------------------------
+   */
+  const observer =
+    new MutationObserver(function(){
+
+      setTimeout(
+        removeOldQCProductCOA,
+        20
+      );
+
+    });
+
+
+  function start(){
+
+    const qc =
+      document.getElementById(
+        "qcInspectionContent"
+      );
+
+
+    if(qc){
+
+      observer.observe(
+        qc,
+        {
+          childList: true,
+          subtree: true
+        }
+      );
+
+    }
+
+  }
+
+
+  if(
+    document.readyState === "loading"
+  ){
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      start
+    );
+
+  }else{
+
+    start();
+
+  }
+
+})();
+</script>
 

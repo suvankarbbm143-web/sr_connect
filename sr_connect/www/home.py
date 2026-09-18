@@ -11,6 +11,42 @@ from frappe.utils import now_datetime, flt, get_datetime, time_diff_in_seconds
 
 SR_STOCK_V2_PREFIX = "SR Connect Stock Entry V2"
 
+
+@frappe.whitelist()
+def sr_manufacturing_role_access(role_name):
+    """
+    Check whether the CURRENT logged-in user has
+    the requested SR Connect role.
+    """
+
+    if frappe.session.user == "Guest":
+        return {
+            "allowed": False
+        }
+
+    role_name = str(
+        role_name or ""
+    ).strip()
+
+    if not role_name:
+        return {
+            "allowed": False
+        }
+
+    roles = set(
+        frappe.get_roles(
+            frappe.session.user
+        )
+    )
+
+    return {
+        "allowed": (
+            frappe.session.user == "Administrator"
+            or role_name in roles
+        )
+    }
+
+
 @frappe.whitelist()
 
 
@@ -7512,6 +7548,22 @@ def sr_qc_submit(
             "Invalid QC category."
         )
 
+    # Work Order information for this QC batch.
+    wo_info = frappe.db.get_value(
+        "Work Order",
+        {
+            "production_item": item_code,
+            "custom_new_batch_id": batch_no,
+            "docstatus": 1,
+        },
+        [
+            "name",
+            "custom_date",
+            "custom_exp_date",
+        ],
+        as_dict=True,
+    ) or {}
+
     # --------------------------------------------------------
     # Server-side validation
     # --------------------------------------------------------
@@ -8048,6 +8100,55 @@ def sr_qc_submit(
             template_name,
         "message":
             "✓ QC Inspection submitted successfully.",
+    }
+
+
+@frappe.whitelist()
+def sr_get_manufacturing_card_permissions():
+    """
+    SR Connect Manufacturing card permissions.
+
+    QC / COA:
+        Quality Manager role only.
+
+    Stock Balance:
+        User must have read permission on Stock Entry.
+
+    Work Order / Job Card / Stock Entry:
+        Existing application permissions remain untouched.
+    """
+
+    user = frappe.session.user
+
+    # Administrator always has access to these Manufacturing cards.
+    if user == "Administrator":
+        return {
+            "qc": True,
+            "coa": True,
+            "stock_entry": True,
+            "stock_balance": True,
+        }
+
+    roles = set(frappe.get_roles(user))
+
+    qc_access = "Quality Manager" in roles
+
+    try:
+        stock_entry_access = bool(
+            frappe.has_permission(
+                "Stock Entry",
+                ptype="read",
+                user=user
+            )
+        )
+    except Exception:
+        stock_entry_access = False
+
+    return {
+        "qc": qc_access,
+        "coa": qc_access,
+        "stock_entry": stock_entry_access,
+        "stock_balance": stock_entry_access,
     }
 
 
@@ -8895,6 +8996,333 @@ def _sr_qc_validate_readings(readings):
     return errors
 
 @frappe.whitelist()
+
+@frappe.whitelist()
+@frappe.whitelist()
+@frappe.whitelist()
+@frappe.whitelist()
+def sr_qc_get_bmr_detail(stock_entry_name):
+    """
+    BMR detail source of truth:
+
+    FINAL QTY:
+        Actual submitted final Manufacture Stock Entry finished-item qty.
+
+    MATERIALS USED:
+        ONLY submitted Stock Entries having:
+            stock_entry_type = "Material Consumption for Manufacture"
+        AND
+            work_order = same Work Order as the final Manufacture entry.
+
+        No BOM.
+        No Material Transfer for Manufacture.
+    """
+
+    if not stock_entry_name:
+        return {
+            "success": False,
+            "message": "Stock Entry is required."
+        }
+
+    final_se = frappe.get_doc("Stock Entry", stock_entry_name)
+
+    if final_se.docstatus != 1:
+        return {
+            "success": False,
+            "message": "Final Manufacture Stock Entry is not submitted."
+        }
+
+    # ---------------------------------------------------------
+    # FINAL MANUFACTURE STOCK ENTRY
+    # ---------------------------------------------------------
+
+    work_order = str(
+        final_se.get("work_order") or ""
+    ).strip()
+
+    # PRODUCTION QUANTITY = Work Order quantity
+    work_order_qty = 0.0
+
+    if work_order and frappe.db.exists("Work Order", work_order):
+        work_order_qty = flt(
+            frappe.db.get_value(
+                "Work Order",
+                work_order,
+                "qty"
+            ) or 0
+        )
+
+    finished_items = []
+    final_qty = 0.0
+    batch_no = ""
+
+    for row in (final_se.get("items") or []):
+
+        qty = flt(row.get("qty") or 0)
+
+        if row.get("is_finished_item"):
+            final_qty += qty
+
+            if not batch_no and row.get("batch_no"):
+                batch_no = str(row.get("batch_no")).strip()
+
+        finished_items.append({
+            "item_code": row.get("item_code") or "",
+            "item_name": row.get("item_name") or "",
+            "qty": qty,
+            "uom": row.get("uom") or "",
+            "batch_no": row.get("batch_no") or "",
+            "t_warehouse": row.get("t_warehouse") or "",
+        })
+
+    # Some Manufacture entries may not have is_finished_item
+    # populated on the child row. In that case use fg_completed_qty
+    # only as a fallback for the final quantity.
+    if final_qty <= 0:
+        final_qty = flt(
+            final_se.get("fg_completed_qty") or 0
+        )
+
+    # ---------------------------------------------------------
+    # WORK ORDER DATES
+    # ---------------------------------------------------------
+
+    mfg_date = ""
+    exp_date = ""
+
+    if work_order and frappe.db.exists(
+        "Work Order",
+        work_order
+    ):
+        wo = frappe.db.get_value(
+            "Work Order",
+            work_order,
+            [
+                "custom_date",
+                "custom_exp_date",
+            ],
+            as_dict=True,
+        ) or {}
+
+        mfg_date = str(
+            wo.get("custom_date") or ""
+        )
+
+        exp_date = str(
+            wo.get("custom_exp_date") or ""
+        )
+
+    # ---------------------------------------------------------
+    # MATERIALS USED
+    #
+    # ONLY:
+    #   submitted
+    #   same Work Order
+    #   Material Consumption for Manufacture
+    # ---------------------------------------------------------
+
+    materials = []
+
+    if work_order:
+
+        consumption_entries = frappe.get_all(
+            "Stock Entry",
+            filters={
+                "docstatus": 1,
+                "work_order": work_order,
+                "stock_entry_type":
+                    "Material Consumption for Manufacture",
+            },
+            fields=[
+                "name",
+                "posting_date",
+                "posting_time",
+                "creation",
+            ],
+            order_by=(
+                "posting_date asc, "
+                "posting_time asc, "
+                "creation asc"
+            ),
+        )
+
+        for entry in consumption_entries:
+
+            consumption_se = frappe.get_doc(
+                "Stock Entry",
+                entry.name
+            )
+
+            for row in (consumption_se.get("items") or []):
+
+                materials.append({
+                    "stock_entry":
+                        consumption_se.name,
+
+                    "item_code":
+                        row.get("item_code") or "",
+
+                    "item_name":
+                        row.get("item_name") or "",
+
+                    "qty":
+                        flt(row.get("qty") or 0),
+
+                    "uom":
+                        row.get("uom") or "",
+
+                    "batch_no":
+                        row.get("batch_no") or "",
+
+                    "s_warehouse":
+                        row.get("s_warehouse") or "",
+
+                    "t_warehouse":
+                        row.get("t_warehouse") or "",
+                })
+
+    return {
+        "success": True,
+
+        "name":
+            final_se.name,
+
+        "stock_entry_name":
+            final_se.name,
+
+        "work_order":
+            work_order,
+
+        "work_order_qty":
+            work_order_qty,
+
+        "production_qty":
+            work_order_qty,
+
+        "batch_no":
+            batch_no,
+
+        "mfg_date":
+            mfg_date,
+
+        "exp_date":
+            exp_date,
+
+        "posting_date":
+            str(final_se.get("posting_date") or ""),
+
+        "posting_time":
+            str(final_se.get("posting_time") or ""),
+
+        # UI can use either final_qty or fg_completed_qty.
+        "final_qty":
+            final_qty,
+
+        "fg_completed_qty":
+            final_qty,
+
+        "finished_items":
+            finished_items,
+
+        "materials":
+            materials,
+
+        "material_count":
+            len(materials),
+    }
+
+@frappe.whitelist()
+def sr_qc_get_bmr_list(
+    item_code,
+    batch_no
+):
+    """
+    Return final Manufacture Stock Entries for a QC batch.
+    BMR list is sourced from submitted Stock Entry records.
+    """
+
+    if _is_guest():
+        frappe.throw("Please login")
+
+    item_code = str(item_code or "").strip()
+    batch_no = str(batch_no or "").strip()
+
+    if not item_code or not batch_no:
+        return {
+            "success": True,
+            "bmr": []
+        }
+
+    work_orders = frappe.get_all(
+        "Work Order",
+        filters={
+            "docstatus": 1,
+            "production_item": item_code,
+            "custom_new_batch_id": batch_no,
+        },
+        fields=[
+            "name",
+            "production_item",
+            "item_name",
+            "custom_new_batch_id",
+        ],
+        order_by="creation desc",
+        limit_page_length=100,
+    )
+
+    wo_names = [
+        str(x.name)
+        for x in work_orders
+        if x.name
+    ]
+
+    if not wo_names:
+        return {
+            "success": True,
+            "bmr": []
+        }
+
+    stock_entries = frappe.get_all(
+        "Stock Entry",
+        filters={
+            "docstatus": 1,
+            "purpose": "Manufacture",
+            "work_order": ["in", wo_names],
+        },
+        fields=[
+            "name",
+            "work_order",
+            "posting_date",
+            "posting_time",
+            "fg_completed_qty",
+        ],
+        order_by="creation desc",
+        limit_page_length=100,
+    )
+
+    bmr = []
+
+    for se in stock_entries:
+
+        bmr.append({
+            "name": str(se.name or ""),
+            "work_order": str(se.work_order or ""),
+            "posting_date": str(se.posting_date or ""),
+            "posting_time": str(se.posting_time or ""),
+            "fg_completed_qty": str(
+                se.fg_completed_qty or ""
+            ),
+        })
+
+    return {
+        "success": True,
+        "item_code": item_code,
+        "batch_no": batch_no,
+        "bmr": bmr,
+    }
+
+
+@frappe.whitelist()
 def sr_qc_get_batch(
     item_code,
     batch_no,
@@ -8912,6 +9340,23 @@ def sr_qc_get_batch(
 
     if _is_guest():
         frappe.throw("Please login")
+
+    # Work Order information for this QC batch.
+    wo_info = frappe.db.get_value(
+        "Work Order",
+        {
+            "production_item": item_code,
+            "custom_new_batch_id": batch_no,
+            "docstatus": 1,
+        },
+        [
+            "name",
+            "custom_date",
+            "custom_exp_date",
+        ],
+        as_dict=True,
+    ) or {}
+
 
     item_code = str(
         item_code or ""
@@ -9128,6 +9573,18 @@ def sr_qc_get_batch(
                 inspections[0].get("name") or ""
             ),
 
+            "work_order": str(
+                wo_info.get("name") or ""
+            ),
+
+            "mfg_date": str(
+                wo_info.get("custom_date") or ""
+            ),
+
+            "exp_date": str(
+                wo_info.get("custom_exp_date") or ""
+            ),
+
             "qi_name": str(
                 inspections[0].get("name") or ""
             ),
@@ -9304,6 +9761,18 @@ def sr_qc_get_batch(
     return {
         "success": True,
         "completed": False,
+
+        "work_order": str(
+            wo_info.get("name") or ""
+        ),
+
+        "mfg_date": str(
+            wo_info.get("custom_date") or ""
+        ),
+
+        "exp_date": str(
+            wo_info.get("custom_exp_date") or ""
+        ),
         "draft": False,
         "item_code": item_code,
         "item_name": _sr_qc_item_name(item_code),

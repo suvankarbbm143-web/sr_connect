@@ -1,3 +1,55 @@
+
+
+<style id="sr-bmr-print-style">
+@media print {
+
+  body {
+    background: white !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  #srBMRPrintArea,
+  #srBMRPrintArea * {
+    visibility: visible !important;
+  }
+
+  #srBMRPrintArea {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 10mm !important;
+    margin: 0 !important;
+  }
+
+  button {
+    display: none !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+}
+</style>
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4006,7 +4058,7 @@ button{-webkit-tap-highlight-color:transparent}
     <span class="text-slate-500">›</span>
   </button>
 
-  <button onclick="window.openSRQCInspection()" class="w-full p-4 bg-white border rounded-2xl flex items-center justify-between mb-3 shadow-sm">
+  <button onclick="window.srOpenQCWithPermission()" class="w-full p-4 bg-white border rounded-2xl flex items-center justify-between mb-3 shadow-sm">
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center font-bold text-indigo-700">QC</div>
       <div class="text-left">
@@ -4020,7 +4072,7 @@ button{-webkit-tap-highlight-color:transparent}
 
   <!-- SR PRODUCT COA -->
   <button
-    onclick="window.srOpenProductCOA()"
+    onclick="window.srOpenProductCOAWithPermission()"
     class="w-full p-4 bg-white border rounded-2xl
            flex items-center justify-between mb-3 shadow-sm"
   >
@@ -4050,7 +4102,7 @@ button{-webkit-tap-highlight-color:transparent}
   </button>
 
 
-  <button onclick="loadList('Stock Balance')"
+  <button onclick="window.srOpenStockBalanceWithPermission()"
  class="w-full p-4 bg-white border rounded-2xl flex items-center justify-between shadow-sm">
     <div class="flex items-center gap-3">
       <div class="w-10 h-10 bg-teal-100 rounded-xl flex items-center justify-center font-bold text-teal-700">SB</div>
@@ -4101,7 +4153,10 @@ button{-webkit-tap-highlight-color:transparent}
   id="createWorkOrderView"
   class="hidden flex-1 bg-slate-50 p-4 overflow-y-auto"
 >
-  <div class="bg-white border rounded-2xl p-4 shadow-sm">
+  <div
+                    class="bg-white border rounded-2xl p-4 shadow-sm"
+                    onclick="if(event.target.closest('[data-job-row]')) return; window.srJCSelectedBatch=''; srJCNotStarted();"
+                  >
 
     <div class="flex items-center justify-between mb-4">
       <div>
@@ -4323,6 +4378,17 @@ button{-webkit-tap-highlight-color:transparent}
 
 
 
+
+<!-- =========================================================
+     SR BMR DETAILS - SEPARATE PAGE
+     ========================================================= -->
+<section
+  id="srBMRDetailsView"
+  class="hidden flex-1 bg-slate-50 p-4 overflow-y-auto"
+>
+  <div id="srBMRDetailsContent"></div>
+</section>
+
 <!-- WORK ORDER DETAIL -->
 <section id="workOrderView" class="hidden flex-1 bg-slate-50 p-4">
   <div id="workOrderContent"></div>
@@ -4399,6 +4465,7 @@ function hideAll(){
     "workOrderView",
     "createWorkOrderView",
     "qcInspectionView",
+    "srProductCOAView",
     "profileView"
   ].forEach(id=>{
     const el=document.getElementById(id);
@@ -5318,7 +5385,234 @@ function showProfile(){
   document.getElementById("backBtn").classList.remove("hidden");
 }
 
+
 function goBack(){
+
+  /*
+   * =========================================================
+   * SR JOB CARD FINAL NAVIGATION
+   *
+   * Manufacturing
+   *    -> Job Card list
+   *       -> Batch list
+   *          -> Job Card detail
+   *
+   * Back:
+   * Detail -> Batch
+   * Batch  -> Job Card list
+   * List   -> Manufacturing
+   * =========================================================
+   */
+
+  if(currentView === "job"){
+
+    if(typeof backFromBatchJobs === "function" &&
+       localStorage.getItem("sr_current_batch")){
+
+      backFromBatchJobs();
+      return;
+
+    }
+
+    currentView = "list";
+    currentDocType = "Job Card";
+
+    loadList("Job Card", false);
+    return;
+  }
+
+
+  if(currentView === "batchJobs"){
+
+    if(typeof backFromBatchJobs === "function"){
+
+      backFromBatchJobs();
+      return;
+
+    }
+
+    currentView = "list";
+    currentDocType = "Job Card";
+
+    loadList("Job Card", false);
+    return;
+  }
+
+
+  if(
+    currentView === "list" &&
+    currentDocType === "Job Card"
+  ){
+
+    showManufacturing();
+    return;
+  }
+
+
+
+  /*
+   * =========================================================
+   * SR STOCK ENTRY V3 FINAL NAVIGATION
+   *
+   * Detail -> Batch List
+   * Batch List -> Stock Entry
+   * Stock Entry -> Manufacturing
+   *
+   * Do NOT use browser history here.
+   * =========================================================
+   */
+
+  if(currentView === "stockEntryDetailV3"){
+
+    const groupKey =
+      srSEV3 &&
+      srSEV3.group &&
+      srSEV3.group.group_key
+        ? srSEV3.group.group_key
+        : "";
+
+    if(
+      groupKey &&
+      typeof srSEV3OpenBatches === "function"
+    ){
+
+      srSEV3OpenBatches(
+        groupKey,
+        false
+      );
+
+    }else{
+
+      if(typeof srSEV3OpenHome === "function"){
+        srSEV3OpenHome(false);
+      }else{
+        showManufacturing();
+      }
+
+    }
+
+    return;
+  }
+
+  if(currentView === "stockEntryBatchesV3"){
+
+    if(typeof srSEV3OpenHome === "function"){
+
+      srSEV3OpenHome(false);
+
+    }else{
+
+      showManufacturing();
+
+    }
+
+    return;
+  }
+
+  if(currentView === "stockEntryHomeV3"){
+
+    showManufacturing();
+
+    return;
+  }
+
+  /*
+   * SR FINAL:
+   * Never let Manufacturing / Work Order use
+   * browser history to decide their parent.
+   */
+
+  /*
+   * Work Order Detail -> Work Order List
+   */
+  if(currentView === "workOrder"){
+
+    currentDocType = "Work Order";
+    currentView = "list";
+
+    loadList(
+      "Work Order",
+      false
+    );
+
+    return;
+  }
+
+  /*
+   * Work Order List -> Manufacturing
+   */
+  if(
+    currentView === "list" &&
+    currentDocType === "Work Order"
+  ){
+
+    showManufacturing();
+
+    return;
+  }
+
+  /*
+   * Manufacturing -> Home
+   *
+   * Do NOT call history.back().
+   * Otherwise browser may jump to Administrator.
+   */
+  if(currentView === "manufacturing"){
+
+    showHome();
+
+    return;
+  }
+
+  /*
+   * SR FINISH:
+   * Work Order Batch flow:
+   * Work Order -> Batches -> Batch Detail
+   * Back must return one step at a time.
+   */
+  if(currentView === "batchJobs"){
+
+    if(typeof backFromBatchJobs === "function"){
+      backFromBatchJobs();
+    }else{
+      showManufacturing();
+    }
+
+    return;
+  }
+
+  /*
+   * SR FINISH:
+   * Stock Entry V3 has its own browser history.
+   * Detail -> List -> Manufacturing.
+   */
+  /*
+   * SR FINISH:
+   * Stock Entry V3 navigation:
+   * Home -> Batches -> Detail
+   * Back must move exactly one step at a time.
+   */
+  if(
+    currentView === "stockEntryDetailV3" ||
+    currentView === "stockEntryBatchesV3" ||
+    currentView === "stockEntryHomeV3"
+  ){
+
+    if(
+      history.state &&
+      history.state.srStockEntryV3
+    ){
+
+      history.back();
+
+    }else{
+
+      showManufacturing();
+
+    }
+
+    return;
+  }
 
   if(currentView === "stockAlertSetting"){
     currentView="manufacturing";
@@ -6551,6 +6845,662 @@ function srQCToggleBatchCOA(button){
 
 }
 
+function srQCBackFromBMR(){
+  try{
+    const state = window.srQCState || {};
+    const batchNo = String(state.batch || "").trim();
+
+    if(batchNo && typeof srQCOpenBatch === "function"){
+      currentView = "qcBatchDetail";
+      srQCOpenBatch(batchNo);
+      return;
+    }
+
+    if(typeof srQCOpenItem === "function" && state.item && state.item.item_code){
+      srQCOpenItem(
+        state.item.item_code,
+        state.item.item_name || state.item.item_code
+      );
+      return;
+    }
+
+    if(typeof showManufacturing === "function"){
+      showManufacturing();
+    }
+  }catch(e){
+    console.error("SR BMR BACK ERROR:", e);
+    if(typeof showManufacturing === "function"){
+      showManufacturing();
+    }
+  }
+}
+
+async function srQCOpenBMRList(){
+
+  const box =
+    document.getElementById("qcInspectionContent");
+
+  if(!box){
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="bg-white border rounded-2xl p-4 shadow-sm">
+      <div class="font-bold text-sm">BMR</div>
+      <div class="text-[10px] text-slate-400 mt-1">
+        Final Manufacture Stock Entries
+      </div>
+
+      <div class="text-center py-8 text-xs text-slate-400">
+        Loading BMR...
+      </div>
+    </div>
+  `;
+
+  try{
+
+    const result =
+      await api(
+        "/api/method/sr_connect.www.home.sr_qc_get_bmr_list"
+        + "?item_code="
+        + encodeURIComponent(
+            srQCState.item.item_code
+          )
+        + "&batch_no="
+        + encodeURIComponent(
+            srQCState.batch
+          )
+      );
+
+    const rows =
+      Array.isArray(result.bmr)
+        ? result.bmr
+        : [];
+
+    box.innerHTML = `
+      <div class="bg-white border rounded-2xl p-4 shadow-sm">
+
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-bold text-sm">BMR</div>
+            <div class="text-[10px] text-slate-400 mt-1">
+              ${escapeHtml(srQCState.batch || "")}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onclick="srQCOpenBatch('${escapeAttr(srQCState.batch || "")}')"
+            class="px-3 py-2 rounded-lg bg-slate-100 text-[10px] font-bold"
+          >
+            BACK
+          </button>
+        </div>
+
+        <div class="space-y-2 mt-4">
+
+          ${
+            rows.length
+            ? rows.map(function(row){
+
+                return `
+                  <button
+                    type="button"
+                    class="w-full text-left bg-slate-50 border rounded-xl p-3 active:scale-[0.99]"
+                    onclick="srQCOpenBMR('${escapeAttr(row.name)}')"
+                  >
+                    <div class="flex items-center gap-3">
+                      <span style="font-size:20px">📄</span>
+
+                      <div class="min-w-0">
+                        <div class="text-xs font-bold">
+                          ${escapeHtml(row.name)}
+                        </div>
+
+                        <div class="text-[10px] text-slate-400 mt-1">
+                          Work Order:
+                          ${escapeHtml(row.work_order || "-")}
+                        </div>
+                      </div>
+
+                      <span class="ml-auto text-slate-400">›</span>
+                    </div>
+                  </button>
+                `;
+
+              }).join("")
+            : `
+              <div class="text-center py-8 text-xs text-slate-400">
+                No BMR found for this batch.
+              </div>
+            `
+          }
+
+        </div>
+
+      </div>
+    `;
+
+  }catch(e){
+
+    console.error("BMR load failed:", e);
+
+    box.innerHTML = `
+      <div class="bg-white border rounded-2xl p-4 shadow-sm">
+        <div class="font-bold text-sm">BMR</div>
+        <div class="text-xs text-rose-500 mt-3">
+          Failed to load BMR.
+        </div>
+      </div>
+    `;
+
+  }
+
+}
+
+
+
+function srQCBackFromDetailsPage(){
+
+  try{
+
+    currentView = "qcBatchDetail";
+
+    const qcView =
+      document.getElementById("qcInspectionView");
+
+    if(qcView){
+      qcView.classList.remove("hidden");
+    }
+
+    const box =
+      document.getElementById("qcInspectionContent");
+
+    if(box){
+      box.classList.remove("hidden");
+    }
+
+    const batch =
+      window.srQCState &&
+      window.srQCState.batch
+        ? window.srQCState.batch
+        : "";
+
+    if(batch && typeof srQCOpenBatch === "function"){
+      srQCOpenBatch(batch);
+      return;
+    }
+
+    if(typeof openSRQCInspection === "function"){
+      openSRQCInspection();
+      return;
+    }
+
+    console.error("SR BMR BACK: Batch state not found.");
+
+  }catch(e){
+
+    console.error(
+      "SR BMR BACK ERROR:",
+      e
+    );
+
+  }
+
+}
+
+
+async function srQCOpenBMR(stockEntryName){
+
+  try{
+
+    currentView = "qcBMRDetail";
+
+    if(typeof hideAll === "function"){
+      hideAll();
+    }
+
+    const response = await fetch(
+      "/api/method/sr_connect.www.home.sr_qc_get_bmr_detail"
+      + "?stock_entry_name="
+      + encodeURIComponent(stockEntryName || ""),
+      {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {
+          "Accept": "application/json"
+        }
+      }
+    );
+
+    const data = await response.json();
+
+    if(!response.ok){
+      throw new Error(
+        data && data.message
+          ? data.message
+          : "BMR request failed."
+      );
+    }
+
+    const bmr = data && data.message
+      ? data.message
+      : data;
+
+    if(!bmr || bmr.success !== true){
+      throw new Error(
+        bmr && bmr.message
+          ? bmr.message
+          : "BMR data not available."
+      );
+    }
+
+    const esc =
+      typeof escapeHtml === "function"
+        ? escapeHtml
+        : function(v){
+            return String(v == null ? "" : v)
+              .replace(/&/g,"&amp;")
+              .replace(/</g,"&lt;")
+              .replace(/>/g,"&gt;")
+              .replace(/"/g,"&quot;")
+              .replace(/'/g,"&#039;");
+          };
+
+    const qty = function(v){
+      const n = Number(v || 0);
+      if(!Number.isFinite(n)) return "";
+      return Number.isInteger(n)
+        ? String(n)
+        : n.toFixed(3).replace(/0+$/,"").replace(/\.$/,"");
+    };
+
+    const root =
+      document.getElementById("srBMRDetailsContent");
+
+    if(!root){
+      throw new Error("BMR Details page not found.");
+    }
+
+    document
+      .querySelectorAll("section")
+      .forEach(function(section){
+        section.classList.add("hidden");
+      });
+
+    const bmrPage =
+      document.getElementById("srBMRDetailsView");
+
+    if(!bmrPage){
+      throw new Error("BMR Details view not found.");
+    }
+
+    bmrPage.classList.remove("hidden");
+
+    document.getElementById("pageTitle").innerText =
+      "BMR Details";
+
+    document.getElementById("pageSub").innerText =
+      bmr.bmr_name || bmr.name || "Manufacture Stock Entry";
+
+    const topBack =
+      document.getElementById("backBtn");
+
+    if(topBack){
+      topBack.classList.add("hidden");
+    }
+
+    const materials =
+      Array.isArray(bmr.materials)
+        ? bmr.materials
+        : [];
+
+    const finished =
+      Array.isArray(bmr.finished_items)
+        ? bmr.finished_items
+        : [];
+
+    let html = `
+
+      <div class="max-w-5xl mx-auto px-4 pb-10">
+
+        <div class="flex items-center justify-between mb-4">
+
+          <button
+            type="button"
+            onclick="(function(){var b=window.srQCState&&window.srQCState.batch;if(!b)return;var q=document.getElementById('qcInspectionContent');if(q){var p=q.closest('#qcInspectionView')||q.parentElement;if(p)p.classList.remove('hidden');}srQCOpenBatch(b);})()"
+            class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+          >
+            ← BACK
+          </button>
+
+          <button
+            type="button"
+            onclick="window.print()"
+            class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+          >
+            PRINT / PDF
+          </button>
+
+        </div>
+
+        <div
+          id="srBMRPrintArea"
+          class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm"
+        >
+
+          <div class="text-center border-b border-slate-300 pb-5 mb-5">
+
+            <div class="text-xl font-extrabold tracking-wide">
+              BATCH MANUFACTURING RECORD
+            </div>
+
+            <div class="text-xs text-slate-500 mt-1">
+              FINAL MANUFACTURE STOCK ENTRY
+            </div>
+
+            <div class="text-lg font-bold mt-3">
+              ${esc(bmr.bmr_name || bmr.name || "-")}
+            </div>
+
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+
+            <div class="border rounded-xl p-3">
+              <div class="text-[10px] text-slate-400 font-bold">
+                WORK ORDER
+              </div>
+              <div class="text-sm font-bold mt-1">
+                ${esc(bmr.work_order || "-")}
+              </div>
+            </div>
+
+            <div class="border rounded-xl p-3">
+              <div class="text-[10px] text-slate-400 font-bold">
+                BATCH NO
+              </div>
+              <div class="text-sm font-bold mt-1">
+                ${esc(bmr.batch_no || "-")}
+              </div>
+            </div>
+
+            <div class="border rounded-xl p-3">
+              <div class="text-[10px] text-slate-400 font-bold">
+                MFG DATE
+              </div>
+              <div class="text-sm font-bold mt-1">
+                ${esc(bmr.mfg_date || bmr.posting_date || "-")}
+              </div>
+            </div>
+
+            <div class="border rounded-xl p-3">
+              <div class="text-[10px] text-slate-400 font-bold">
+                EXP DATE
+              </div>
+              <div class="text-sm font-bold mt-1">
+                ${esc(bmr.exp_date || "-")}
+              </div>
+            </div>
+
+          </div>
+
+          <div class="mb-7">
+
+            <div class="text-sm font-extrabold mb-3">
+              FINAL PRODUCT
+            </div>
+
+            <div class="overflow-x-auto border rounded-xl">
+
+              <table class="w-full text-xs">
+
+                <thead class="bg-slate-100">
+                  <tr>
+                    <th class="text-left p-3">ITEM NAME</th>
+                    <th class="text-left p-3">UOM</th>
+                    <th class="text-left p-3">BATCH NO</th>
+                    <th class="text-right p-3">FINAL QTY</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+
+                  ${
+                    finished.length
+                    ? finished.map(function(row){
+
+                        return `
+                          <tr class="border-t">
+
+                            <td class="p-3 font-semibold">
+                              ${esc(row.item_name || row.item_code || "-")}
+                            </td>
+
+                            <td class="p-3">
+                              ${esc(row.uom || "-")}
+                            </td>
+
+                            <td class="p-3">
+                              ${esc(row.batch_no || bmr.batch_no || "-")}
+                            </td>
+
+                            <td class="p-3 text-right font-bold">
+                              ${esc(qty(row.qty))}
+                            </td>
+
+                          </tr>
+                        `;
+
+                      }).join("")
+                    : `
+                      <tr>
+                        <td colspan="4" class="p-4 text-center text-slate-400">
+                          No finished product row found.
+                        </td>
+                      </tr>
+                    `
+                  }
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+
+              <div class="border rounded-xl px-5 py-3 text-right">
+                <div class="text-[10px] text-slate-400 font-bold">
+                  PRODUCTION QUANTITY
+                </div>
+                <div class="text-xl font-extrabold">
+                  ${esc(qty(bmr.work_order_qty))}
+                </div>
+              </div>
+
+              <div class="border rounded-xl px-5 py-3 text-right">
+                <div class="text-[10px] text-slate-400 font-bold">
+                  FINAL QUANTITY
+                </div>
+                <div class="text-xl font-extrabold">
+                  ${esc(qty(bmr.final_qty))}
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          <div class="mb-7">
+
+            <div class="text-sm font-extrabold mb-3">
+              MATERIALS USED
+            </div>
+
+            <div class="overflow-x-auto border rounded-xl">
+
+              <table class="w-full text-xs">
+
+                <thead class="bg-slate-100">
+
+                  <tr>
+
+                    <th class="text-left p-3">#</th>
+                    <th class="text-left p-3">ITEM NAME</th>
+                    <th class="text-right p-3">QTY USED</th>
+                    <th class="text-left p-3">UOM</th>
+                    <th class="text-left p-3">BATCH NO</th>
+                    <th class="text-left p-3">WAREHOUSE</th>
+                    <th class="text-left p-3">BRAND</th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody>
+
+                  ${
+                    materials.length
+                    ? materials.map(function(row,index){
+
+                        return `
+                          <tr class="border-t">
+
+                            <td class="p-3">
+                              ${index + 1}
+                            </td>
+
+                            <td class="p-3 font-semibold">
+                              ${esc(row.item_name || row.item_code || "-")}
+                            </td>
+
+                            <td class="p-3 text-right font-bold">
+                              ${esc(qty(row.qty))}
+                            </td>
+
+                            <td class="p-3">
+                              ${esc(row.uom || "-")}
+                            </td>
+
+                            <td class="p-3">
+                              ${esc(row.batch_no || "-")}
+                            </td>
+
+                            <td class="p-3">
+                              ${esc(row.s_warehouse || "-")}
+                            </td>
+
+                            <td class="p-3">
+                              ${esc(row.brand || "-")}
+                            </td>
+
+                          </tr>
+                        `;
+
+                      }).join("")
+                    : `
+                      <tr>
+                        <td colspan="7" class="p-5 text-center text-slate-400">
+                          No submitted material consumption rows found.
+                        </td>
+                      </tr>
+                    `
+                  }
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+            <div class="text-[10px] text-slate-400 mt-2">
+              ${materials.length} actual material row(s) from submitted Material Consumption for Manufacture.
+            </div>
+
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 border-t pt-5">
+
+            <div>
+
+              <div class="text-[10px] text-slate-400 font-bold">
+                STOCK ENTRY DATE
+              </div>
+
+              <div class="text-sm font-semibold mt-1">
+                ${esc(bmr.posting_date || "-")}
+              </div>
+
+            </div>
+
+            <div>
+
+              <div class="text-[10px] text-slate-400 font-bold">
+                STOCK ENTRY TIME
+              </div>
+
+              <div class="text-sm font-semibold mt-1">
+                ${esc(bmr.posting_time || "-")}
+              </div>
+
+            </div>
+
+          </div>
+
+          <div class="mt-8 pt-5 border-t text-[10px] text-slate-400 text-center">
+            Generated from submitted ERPNext Stock Entry data.
+          </div>
+
+        </div>
+
+      </div>
+
+    `;
+
+    root.innerHTML = html;
+
+  }catch(e){
+
+    console.error("SR BMR DETAIL ERROR:", e);
+
+    const root =
+      document.getElementById("app") ||
+      document.body;
+
+    root.innerHTML = `
+
+      <div class="max-w-xl mx-auto px-4 py-10">
+
+        <button
+          type="button"
+          onclick="srQCOpenBMRList()"
+          class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold mb-5"
+        >
+          ← BACK
+        </button>
+
+        <div class="bg-rose-50 border border-rose-200 rounded-2xl p-5">
+
+          <div class="font-extrabold text-rose-700">
+            BMR Load Failed
+          </div>
+
+          <div class="text-xs text-rose-600 mt-2">
+            ${String(e && e.message || "Unable to load BMR.")}
+          </div>
+
+        </div>
+
+      </div>
+
+    `;
+
+  }
+
+}
+
+
 async function srQCOpenBatch(batchNo){
 
   srQCState.batch = batchNo;
@@ -6631,22 +7581,36 @@ async function srQCOpenBatch(batchNo){
 
             </div>
 
-            ${
-              result.quality_inspection_template
-              ? `
-                <div class="text-right">
-                  <div class="text-[9px] text-slate-400">
-                    TEMPLATE
+            <div class="flex items-start gap-3">
+
+              ${
+                result.quality_inspection_template
+                ? `
+                  <div class="text-right">
+                    <div class="text-[9px] text-slate-400">
+                      TEMPLATE
+                    </div>
+                    <div class="text-[10px] font-bold">
+                      ${escapeHtml(
+                        result.quality_inspection_template
+                      )}
+                    </div>
                   </div>
-                  <div class="text-[10px] font-bold">
-                    ${escapeHtml(
-                      result.quality_inspection_template
-                    )}
-                  </div>
-                </div>
-              `
-              : ""
-            }
+                `
+                : ""
+              }
+
+              <button
+                type="button"
+                onclick="srQCOpenBMRList()"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-700 active:scale-95"
+                title="BMR"
+              >
+                <span style="font-size:15px;line-height:1">📁</span>
+                <span>BMR</span>
+              </button>
+
+            </div>
 
           </div>
 
@@ -6671,6 +7635,69 @@ async function srQCOpenBatch(batchNo){
 
         </div>
 
+
+
+        <!-- SR QC MFG EXP DISPLAY -->
+        <div class="bg-white border rounded-2xl p-4 shadow-sm">
+
+          ${
+            result.work_order
+            ? `
+              <div class="mb-3">
+                <div class="text-[9px] text-slate-400">
+                  WORK ORDER
+                </div>
+                <div class="text-xs font-bold text-slate-800 mt-1">
+                  ${escapeHtml(result.work_order)}
+                </div>
+              </div>
+            `
+            : ""
+          }
+
+          <div class="grid grid-cols-2 gap-3">
+
+            <div class="bg-slate-50 rounded-xl p-3">
+              <div class="text-[9px] text-slate-400">
+                MFG DATE
+              </div>
+              <div class="text-xs font-bold text-slate-800 mt-1">
+                ${
+                  result.mfg_date
+                  ? escapeHtml(
+                      String(result.mfg_date)
+                        .slice(0,10)
+                        .split("-")
+                        .reverse()
+                        .join("-")
+                    )
+                  : "-"
+                }
+              </div>
+            </div>
+
+            <div class="bg-slate-50 rounded-xl p-3">
+              <div class="text-[9px] text-slate-400">
+                EXP DATE
+              </div>
+              <div class="text-xs font-bold text-slate-800 mt-1">
+                ${
+                  result.exp_date
+                  ? escapeHtml(
+                      String(result.exp_date)
+                        .slice(0,10)
+                        .split("-")
+                        .reverse()
+                        .join("-")
+                    )
+                  : "-"
+                }
+              </div>
+            </div>
+
+          </div>
+
+        </div>
 
         <!-- =====================================================
              ERPNext Quality Inspection fields
@@ -9839,6 +10866,16 @@ async function loadList(type, restoring=false){
 
 function setJobFilter(filter){
 
+  window.srJCSelectedBatch = "";
+
+
+  /*
+   * Status tab click = full list reset.
+   * Job Detail -> Back does NOT call this function,
+   * so selected batch remains after Back.
+   */
+  window.srJCSelectedBatch = "";
+
   jobFilter = filter;
 
   /*
@@ -12743,6 +13780,13 @@ function renderJob(){
         </div>
       </div>
 
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
+        <div class="text-[10px] text-blue-500">SUBMITTED QTY</div>
+        <div class="text-sm font-bold text-blue-800 mt-1">
+          ${escapeHtml(formatQty(selectedJob.completed_qty))}
+        </div>
+      </div>
+
     </div>
 
 
@@ -13621,19 +14665,25 @@ function escapeAttr(value){
 
 async function logout(){
   try{
-    await fetch(
-      "/api/method/logout",
-      {
-        method:"POST",
-        headers:{
-          "X-Frappe-CSRF-Token":"{{ csrf_token }}"
-        }
-      }
-    );
+    await fetch("/api/method/logout", {
+      method: "GET",
+      credentials: "same-origin"
+    });
+  }catch(e){
+    console.error("Logout request error:", e);
+  }
+
+  // Clear app state so Profile/Logout UI cannot remain on the page
+  try{
+    sessionStorage.clear();
   }catch(e){}
 
-  localStorage.clear();
-  window.location.href="/login";
+  try{
+    localStorage.removeItem("srQCCOAState");
+  }catch(e){}
+
+  // Go directly to Frappe login page
+  window.location.replace("/login");
 }
 
 
@@ -25348,7 +26398,7 @@ async function(resultIndex,index){
     );
   }
 
-  function srJCNotStarted(){
+        function srJCNotStarted(){
 
     if(
       typeof rawItems === "undefined" ||
@@ -25360,11 +26410,21 @@ async function(resultIndex,index){
 
     if(!box) return;
 
-    const items =
+    let items =
       rawItems.filter(o =>
         srJCStatus(o) === "Not Started" &&
         srJCMatchesSearch(o)
       );
+
+    if(window.srJCSelectedBatch){
+      const wanted =
+        String(window.srJCSelectedBatch).trim();
+
+      items = items.filter(o =>
+        String(o.batch_no || "").trim() === wanted
+      );
+    }
+
 
     if(!items.length){
       box.innerHTML =
@@ -25430,7 +26490,10 @@ async function(resultIndex,index){
 
                     <div class="flex items-center justify-between gap-3 pb-3 border-b">
 
-                      <div class="shrink-0">
+                      <div
+                      class="shrink-0 cursor-pointer"
+                      onclick="event.stopPropagation(); window.srJCSelectedBatch='${srJCAttr(batch)}'; srJCNotStarted()"
+                    >
 
                         <div class="text-[9px] text-slate-400 uppercase font-bold">
                           Batch No
@@ -25463,6 +26526,7 @@ async function(resultIndex,index){
                       ${jobs.map((j,i) => `
 
                         <div
+                          data-job-row
                           onclick="openJob('${srJCAttr(j.name)}')"
                           class="flex items-center justify-between gap-2 py-2 border-b last:border-b-0 cursor-pointer active:scale-[.99]"
                         >
@@ -25644,6 +26708,14 @@ async function(resultIndex,index){
       typeof jobFilter === "undefined"
     ) return;
 
+    /*
+     * Status tab changed:
+     * clear selected batch so the selected-batch filter
+     * does not survive when switching tabs.
+     *
+     * Job Detail -> Back does NOT call this reset,
+     * so the selected batch remains there.
+     */
     if(jobFilter === "Not Started"){
       srJCNotStarted();
       return;
@@ -25700,6 +26772,112 @@ async function(resultIndex,index){
   );
 
 })();
+</script>
+
+
+<script>
+/* SR MANUFACTURING CARD PERMISSION - FINAL */
+
+window.srCheckManufacturingPermission = async function(type){
+
+  /* home.html receives these from the server-side template */
+  const currentUser =
+    window.sr_current_user ||
+    "{{ frappe.session.user }}";
+
+  const roles =
+    Array.isArray(window.frappe_user_roles)
+      ? window.frappe_user_roles
+      : [];
+
+  /* Administrator always allowed */
+  if(currentUser === "Administrator"){
+    return true;
+  }
+
+  /* Quality Manager: QC + COA */
+  if(
+    (type === "qc" || type === "coa") &&
+    roles.includes("Quality Manager")
+  ){
+    return true;
+  }
+
+  /* Stock Balance: use server-side permission API */
+  if(type === "stock_balance"){
+
+    try{
+
+      const response = await fetch(
+        "/api/method/sr_connect.www.home.sr_get_manufacturing_card_permissions",
+        {
+          method: "GET",
+          credentials: "same-origin",
+          headers: {
+            "Accept": "application/json"
+          }
+        }
+      );
+
+      if(response.ok){
+
+        const data = await response.json();
+        const perms = data && data.message
+          ? data.message
+          : {};
+
+        if(perms.stock_balance === true){
+          return true;
+        }
+
+      }
+
+    }catch(e){
+
+      console.error(
+        "SR Stock Balance permission check failed:",
+        e
+      );
+
+    }
+  }
+
+  alert("No permission");
+  return false;
+};
+
+
+window.srOpenQCWithPermission = async function(){
+
+  if(
+    await window.srCheckManufacturingPermission("qc")
+  ){
+    window.openSRQCInspection();
+  }
+
+};
+
+
+window.srOpenProductCOAWithPermission = async function(){
+
+  if(
+    await window.srCheckManufacturingPermission("coa")
+  ){
+    window.srOpenProductCOA();
+  }
+
+};
+
+
+window.srOpenStockBalanceWithPermission = async function(){
+
+  if(
+    await window.srCheckManufacturingPermission("stock_balance")
+  ){
+    loadList("Stock Balance");
+  }
+
+};
 </script>
 
 </body>
@@ -28403,11 +29581,22 @@ async function srQCPrintCompleted(){
       );
 
     if(view){
-      view.classList.add(
-        "hidden"
-      );
+      view.classList.add("hidden");
     }
 
+    /*
+     * SR FINISH:
+     * SR PRODUCT COA was opened from Manufacturing.
+     * Back must return to Manufacturing, not Home.
+     */
+    try{
+      if(typeof showManufacturing === "function"){
+        showManufacturing();
+        return;
+      }
+    }catch(e){
+      console.warn("SR COA return to Manufacturing failed:", e);
+    }
 
     const home =
       document.getElementById(
@@ -28415,9 +29604,7 @@ async function srQCPrintCompleted(){
       );
 
     if(home){
-      home.classList.remove(
-        "hidden"
-      );
+      home.classList.remove("hidden");
     }
 
   };
@@ -29624,6 +30811,28 @@ async function srQCPrintCompleted(){
    * -------------------------------------------------------
    */
   window.srOpenProductCOA = function(){
+    
+    /*
+     * SR FINISH:
+     * Keep SR PRODUCT COA as a browser-history step.
+     * This allows Back to return to the COA screen instead
+     * of jumping directly to the main application.
+     */
+    try{
+      if(
+        !window.history.state ||
+        window.history.state.srView !== "srProductCOA"
+      ){
+        window.history.pushState(
+          {srView: "srProductCOA"},
+          "",
+          window.location.href
+        );
+      }
+    }catch(e){
+      console.warn("SR COA history state failed:", e);
+    }
+
 
     /*
      * Hide normal application sections.
@@ -29771,11 +30980,22 @@ async function srQCPrintCompleted(){
       );
 
     if(view){
-      view.classList.add(
-        "hidden"
-      );
+      view.classList.add("hidden");
     }
 
+    /*
+     * SR FINISH:
+     * SR PRODUCT COA was opened from Manufacturing.
+     * Back must return to Manufacturing, not Home.
+     */
+    try{
+      if(typeof showManufacturing === "function"){
+        showManufacturing();
+        return;
+      }
+    }catch(e){
+      console.warn("SR COA return to Manufacturing failed:", e);
+    }
 
     const home =
       document.getElementById(
@@ -29783,9 +31003,7 @@ async function srQCPrintCompleted(){
       );
 
     if(home){
-      home.classList.remove(
-        "hidden"
-      );
+      home.classList.remove("hidden");
     }
 
   };
@@ -30034,6 +31252,18 @@ async function srQCPrintCompleted(){
       /*
        * No trigger_print=1
        */
+      /*
+       * Remember that COA was opened from SR PRODUCT COA.
+       * Browser Back from the COA tab/page should return
+       * to the standalone SR PRODUCT COA screen.
+       */
+      try{
+        sessionStorage.setItem(
+          "srCOA_returnView",
+          "srProductCOAView"
+        );
+      }catch(e){}
+
       window.open(
         url,
         "_blank",

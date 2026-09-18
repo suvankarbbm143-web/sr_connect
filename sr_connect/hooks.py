@@ -296,3 +296,34 @@ doc_events = {
         "after_insert": "sr_connect.www.home.sr_stock_alert_stock_change"
     }
 }
+
+
+# ------------------------------------------------------------
+# QC gate before Work Order submission
+# ------------------------------------------------------------
+
+_sr_qc_doc_events = globals().get("doc_events", {}) or {}
+
+_wo_events = _sr_qc_doc_events.get("Work Order", {}) or {}
+
+_existing_before_submit = _wo_events.get("before_submit")
+
+if _existing_before_submit:
+    if isinstance(_existing_before_submit, list):
+        if "sr_connect.www.home.sr_qc_validate_work_order_before_submit" not in _existing_before_submit:
+            _existing_before_submit.append(
+                "sr_connect.www.home.sr_qc_validate_work_order_before_submit"
+            )
+    else:
+        _wo_events["before_submit"] = [
+            _existing_before_submit,
+            "sr_connect.www.home.sr_qc_validate_work_order_before_submit",
+        ]
+else:
+    _wo_events["before_submit"] = [
+        "sr_connect.www.home.sr_qc_validate_work_order_before_submit"
+    ]
+
+_sr_qc_doc_events["Work Order"] = _wo_events
+doc_events = _sr_qc_doc_events
+

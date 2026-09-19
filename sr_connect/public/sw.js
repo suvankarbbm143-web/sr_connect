@@ -1,4 +1,4 @@
-const CACHE_NAME = "sr-connect-v3";
+const CACHE_NAME = "sr-connect-v5";
 
 const APP_SHELL = [
     "/home",

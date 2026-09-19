@@ -1,13 +1,14 @@
 {
-  "id": "/frontend/",
+  "id": "/home",
   "name": "SR Connect",
   "short_name": "SR Connect",
-  "start_url": "/frontend/",
-  "scope": "/frontend/",
+  "description": "SR Connect production and ERP workspace",
+  "start_url": "/home",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f1f5f9",
   "theme_color": "#0f172a",
-  "orientation": "portrait",
+  "orientation": "any",
   "prefer_related_applications": false,
   "icons": [
     {

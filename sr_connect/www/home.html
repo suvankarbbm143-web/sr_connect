@@ -1,3 +1,5 @@
+<!-- SR_CONNECT_HOME_PWA_V1 -->
+<!-- no_cache -->
 
 
 <style id="sr-bmr-print-style">
@@ -53,11 +55,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="/manifest.json">
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SR Connect</title>
-<meta name="theme-color" content="#0f172a">
-<link rel="manifest" href="/assets/sr_connect/manifest.json">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 
@@ -6058,7 +6061,7 @@ function goBack(){
 
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/assets/sr_connect/sw.js", {
+        navigator.serviceWorker.register("/sw.js", {
             scope: "/"
         }).catch(function (err) {
             console.warn("SR Connect service worker registration failed:", err);
@@ -6072,11 +6075,27 @@ if ("serviceWorker" in navigator) {
 
 window.addEventListener("beforeinstallprompt", function(e) {
     e.preventDefault();
+
     window.deferredInstallPrompt = e;
+
+    const btn = document.getElementById("installBottomBtn");
+
+    if (
+        btn &&
+        !window.matchMedia("(display-mode: standalone)").matches
+    ) {
+        btn.classList.remove("hidden");
+    }
 });
 
 window.addEventListener("appinstalled", function() {
     window.deferredInstallPrompt = null;
+
+    const btn = document.getElementById("installBottomBtn");
+
+    if (btn) {
+        btn.classList.add("hidden");
+    }
 });
 
 async function installApp(event) {
@@ -6104,6 +6123,17 @@ async function installApp(event) {
             await promptEvent.userChoice;
 
         window.deferredInstallPrompt = null;
+
+        if (
+            choice &&
+            choice.outcome === "accepted"
+        ) {
+            const btn = document.getElementById("installBottomBtn");
+
+            if (btn) {
+                btn.classList.add("hidden");
+            }
+        }
 
         console.log(
             "SR Connect install:",
@@ -27108,7 +27138,6 @@ window.srOpenStockBalanceWithPermission = async function(){
 
 };
 </script>
-
 </body>
 </html>
 

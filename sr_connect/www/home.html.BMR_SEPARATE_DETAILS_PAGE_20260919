@@ -3909,135 +3909,6 @@ button{-webkit-tap-highlight-color:transparent}
 }
 
 </style>
-
-<style id="sr-bmr-a4-one-page">
-@media print {
-  @page {
-    size: A4 portrait;
-    margin: 4mm;
-  }
-
-  html,
-  body {
-    width: 210mm !important;
-    height: 297mm !important;
-    min-height: 297mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-  }
-
-  body * {
-    visibility: hidden !important;
-  }
-
-  #srBMRDetailsView,
-  #srBMRDetailsView * {
-    visibility: visible !important;
-  }
-
-  #srBMRDetailsView {
-    display: block !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 202mm !important;
-    height: 289mm !important;
-    max-height: 289mm !important;
-    overflow: hidden !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: white !important;
-  }
-
-  #srBMRDetailsView > div {
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  #srBMRPrintArea {
-    width: 202mm !important;
-    max-width: 202mm !important;
-    min-height: 0 !important;
-    max-height: 289mm !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
-    padding: 5mm !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    font-size: 8.5px !important;
-    line-height: 1.15 !important;
-  }
-
-  #srBMRPrintArea .text-xl {
-    font-size: 15px !important;
-  }
-
-  #srBMRPrintArea .text-lg {
-    font-size: 12px !important;
-  }
-
-  #srBMRPrintArea .text-sm {
-    font-size: 9px !important;
-  }
-
-  #srBMRPrintArea .text-xs {
-    font-size: 8px !important;
-  }
-
-  #srBMRPrintArea .text-\[10px\],
-  #srBMRPrintArea .text-\[9px\] {
-    font-size: 7px !important;
-  }
-
-  #srBMRPrintArea table {
-    width: 100% !important;
-    font-size: 7.5px !important;
-    border-collapse: collapse !important;
-  }
-
-  #srBMRPrintArea th,
-  #srBMRPrintArea td {
-    padding: 2px 3px !important;
-    line-height: 1.1 !important;
-  }
-
-  #srBMRPrintArea .p-6 {
-    padding: 4mm !important;
-  }
-
-  #srBMRPrintArea .p-5,
-  #srBMRPrintArea .p-4,
-  #srBMRPrintArea .p-3 {
-    padding: 2.5mm !important;
-  }
-
-  #srBMRPrintArea .mb-6 {
-    margin-bottom: 3mm !important;
-  }
-
-  #srBMRPrintArea .mb-5,
-  #srBMRPrintArea .mb-4 {
-    margin-bottom: 2.5mm !important;
-  }
-
-  #srBMRPrintArea .mt-3 {
-    margin-top: 1.5mm !important;
-  }
-
-  #srBMRDetailsView button {
-    display: none !important;
-  }
-
-  #srBMRPrintArea,
-  #srBMRPrintArea * {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-}
-</style>
-
 </head>
 
 <body>
@@ -4151,7 +4022,7 @@ button{-webkit-tap-highlight-color:transparent}
     </button>
   </div>
   <div class="mt-6">
-    <button type="button" onclick="return installApp(event)" id="installBottomBtn" class="hidden w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold">📱 Install SR Connect App</button>
+    <button onclick="installApp()" id="installBottomBtn" class="hidden w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold">📱 Install SR Connect App</button>
   </div>
   <div class="mt-3">
     <button onclick="enableNotifications()" id="notificationBtn" class="w-full py-3 rounded-xl bg-white border text-slate-700 text-xs font-bold">🔔 Enable Job Card Notifications</button>
@@ -4507,17 +4378,6 @@ button{-webkit-tap-highlight-color:transparent}
 
 
 
-
-<!-- =========================================================
-     SR BMR DETAILS - SEPARATE PAGE
-     ========================================================= -->
-<section
-  id="srBMRDetailsView"
-  class="hidden flex-1 bg-slate-50 p-4 overflow-y-auto"
->
-  <div id="srBMRDetailsContent"></div>
-</section>
-
 <!-- WORK ORDER DETAIL -->
 <section id="workOrderView" class="hidden flex-1 bg-slate-50 p-4">
   <div id="workOrderContent"></div>
@@ -4557,7 +4417,7 @@ let rawItems=[];
 let selectedJob=null;
 let selectedWorkOrder=null;
 let timerInterval=null;
-window.deferredInstallPrompt = null;
+let deferredInstallPrompt=null;
 let jobFilter="All";
 let srDraftWorkOrderId = "";
 
@@ -4595,7 +4455,6 @@ function hideAll(){
     "createWorkOrderView",
     "qcInspectionView",
     "srProductCOAView",
-    "srBMRDetailsView",
     "profileView"
   ].forEach(id=>{
     const el=document.getElementById(id);
@@ -5536,20 +5395,8 @@ function goBack(){
 
   if(currentView === "job"){
 
-    if(typeof backFromBatchJobs === "function"){
-
-      /*
-       * Job Detail -> Back:
-       * restore the exact batch from which this Job was opened.
-       * Do NOT show the complete Job Card list here.
-       */
-      if(
-        selectedJob &&
-        selectedJob.batch_no
-      ){
-        window.srJCSelectedBatch =
-          String(selectedJob.batch_no).trim();
-      }
+    if(typeof backFromBatchJobs === "function" &&
+       localStorage.getItem("sr_current_batch")){
 
       backFromBatchJobs();
       return;
@@ -5786,48 +5633,6 @@ function goBack(){
 
 
   if(
-    currentView === "qcBMRDetail"
-  ){
-
-    const qcView =
-      document.getElementById("qcInspectionView");
-
-    const bmrView =
-      document.getElementById("srBMRDetailsView");
-
-    if(bmrView){
-      bmrView.classList.add("hidden");
-    }
-
-    if(qcView){
-      qcView.classList.remove("hidden");
-    }
-
-    currentView = "qcBatchDetail";
-
-    if(
-      window.srQCState &&
-      srQCState.batch &&
-      typeof srQCOpenBatch === "function"
-    ){
-      srQCOpenBatch(srQCState.batch);
-    }
-
-    return;
-  }
-
-  if(
-    currentView === "qcBMRList"
-  ){
-
-    srQCOpenBatch(
-      srQCState.batch
-    );
-
-    return;
-  }
-
-  if(
     currentView === "qcBatchDetail"
   ){
 
@@ -6051,76 +5856,30 @@ function goBack(){
 
 
 
-
-/* =========================================================
-   PWA SERVICE WORKER
-   ========================================================= */
-
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/assets/sr_connect/sw.js", {
-            scope: "/"
-        }).catch(function (err) {
-            console.warn("SR Connect service worker registration failed:", err);
-        });
-    });
-}
-
 /* =========================================================
    INSTALL
    ========================================================= */
 
-window.addEventListener("beforeinstallprompt", function(e) {
-    e.preventDefault();
-    window.deferredInstallPrompt = e;
+window.addEventListener("beforeinstallprompt",e=>{
+  e.preventDefault();
+  deferredInstallPrompt=e;
 });
 
-window.addEventListener("appinstalled", function() {
-    window.deferredInstallPrompt = null;
+window.addEventListener("appinstalled",()=>{
+  deferredInstallPrompt=null;
 });
 
-async function installApp(event) {
+async function installApp(){
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt=null;
+    return;
+  }
 
-    if (event) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-    }
-
-    const promptEvent =
-        window.deferredInstallPrompt;
-
-    if (!promptEvent) {
-        alert(
-            "Chrome menu theke Install SR Connect select korun."
-        );
-        return false;
-    }
-
-    try {
-
-        promptEvent.prompt();
-
-        const choice =
-            await promptEvent.userChoice;
-
-        window.deferredInstallPrompt = null;
-
-        console.log(
-            "SR Connect install:",
-            choice && choice.outcome
-        );
-
-    } catch (err) {
-
-        console.error(
-            "SR Connect install error:",
-            err
-        );
-
-    }
-
-    return false;
+  alert("Browser menu থেকে Add to Home Screen / Install App দিন।");
 }
+
 
 /* =========================================================
    SR CONNECT QC INSPECTION UI V1
@@ -7229,57 +6988,6 @@ async function srQCOpenBMRList(){
 }
 
 
-
-function srQCBackFromDetailsPage(){
-
-  try{
-
-    currentView = "qcBatchDetail";
-
-    const qcView =
-      document.getElementById("qcInspectionView");
-
-    if(qcView){
-      qcView.classList.remove("hidden");
-    }
-
-    const box =
-      document.getElementById("qcInspectionContent");
-
-    if(box){
-      box.classList.remove("hidden");
-    }
-
-    const batch =
-      window.srQCState &&
-      window.srQCState.batch
-        ? window.srQCState.batch
-        : "";
-
-    if(batch && typeof srQCOpenBatch === "function"){
-      srQCOpenBatch(batch);
-      return;
-    }
-
-    if(typeof openSRQCInspection === "function"){
-      openSRQCInspection();
-      return;
-    }
-
-    console.error("SR BMR BACK: Batch state not found.");
-
-  }catch(e){
-
-    console.error(
-      "SR BMR BACK ERROR:",
-      e
-    );
-
-  }
-
-}
-
-
 async function srQCOpenBMR(stockEntryName){
 
   try{
@@ -7346,39 +7054,8 @@ async function srQCOpenBMR(stockEntryName){
     };
 
     const root =
-      document.getElementById("srBMRDetailsContent");
-
-    if(!root){
-      throw new Error("BMR Details page not found.");
-    }
-
-    document
-      .querySelectorAll("section")
-      .forEach(function(section){
-        section.classList.add("hidden");
-      });
-
-    const bmrPage =
-      document.getElementById("srBMRDetailsView");
-
-    if(!bmrPage){
-      throw new Error("BMR Details view not found.");
-    }
-
-    bmrPage.classList.remove("hidden");
-
-    document.getElementById("pageTitle").innerText =
-      "BMR Details";
-
-    document.getElementById("pageSub").innerText =
-      bmr.bmr_name || bmr.name || "Manufacture Stock Entry";
-
-    const topBack =
-      document.getElementById("backBtn");
-
-    if(topBack){
-      topBack.classList.remove("hidden");
-    }
+      document.getElementById("app") ||
+      document.body;
 
     const materials =
       Array.isArray(bmr.materials)
@@ -7395,6 +7072,14 @@ async function srQCOpenBMR(stockEntryName){
       <div class="max-w-5xl mx-auto px-4 pb-10">
 
         <div class="flex items-center justify-between mb-4">
+
+          <button
+            type="button"
+            onclick="(function(){var b=window.srQCState&&window.srQCState.batch;if(!b)return;var q=document.getElementById('qcInspectionContent');if(q){var p=q.closest('#qcInspectionView')||q.parentElement;if(p)p.classList.remove('hidden');}srQCOpenBatch(b);})()"
+            class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+          >
+            ← BACK
+          </button>
 
           <button
             type="button"
@@ -7530,24 +7215,18 @@ async function srQCOpenBMR(stockEntryName){
 
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div class="flex justify-end mt-3">
 
               <div class="border rounded-xl px-5 py-3 text-right">
-                <div class="text-[10px] text-slate-400 font-bold">
-                  PRODUCTION QUANTITY
-                </div>
-                <div class="text-xl font-extrabold">
-                  ${esc(qty(bmr.work_order_qty))}
-                </div>
-              </div>
 
-              <div class="border rounded-xl px-5 py-3 text-right">
                 <div class="text-[10px] text-slate-400 font-bold">
                   FINAL QUANTITY
                 </div>
+
                 <div class="text-xl font-extrabold">
-                  ${esc(qty(bmr.final_qty))}
+                  ${esc(qty(bmr.finished_qty))}
                 </div>
+
               </div>
 
             </div>
@@ -7696,7 +7375,7 @@ async function srQCOpenBMR(stockEntryName){
 
         <button
           type="button"
-          onclick="srQCOpenBMRList()"
+          onclick="history.back()"
           class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold mb-5"
         >
           ← BACK
@@ -11116,16 +10795,7 @@ function setJobFilter(filter){
   }
 
   updateJobFilterButtons();
-
-  /*
-   * Job Card tab change must always reload fresh data.
-   * This clears any previously selected batch/job filter.
-   */
-  if(currentDocType === "Job Card"){
-    loadList("Job Card", false);
-  }else{
-    renderList();
-  }
+  renderList();
 
 }
 
@@ -15313,6 +14983,18 @@ async function restorePage(){
 
 }
 
+
+/* =========================================================
+   SERVICE WORKER
+   ========================================================= */
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker
+      .register("/sw.js")
+      .catch(e=>console.error("SW:",e));
+  });
+}
 
 window.addEventListener("load",()=>{
   if(localStorage.getItem("sr_notifications_enabled")==="1" && "Notification" in window && Notification.permission==="granted") startNotificationPolling();
@@ -26728,18 +26410,13 @@ async function(resultIndex,index){
 
                       </div>
 
-                      <div class="flex flex-col items-stretch gap-1 text-[9px] font-bold whitespace-nowrap min-w-[112px]">
-                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-center">
-                          MFG DATE<br>
-                          <span class="text-[10px]">
-                            ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
-                          </span>
+                      <div class="flex items-center gap-1 text-[10px] font-bold whitespace-nowrap mb-1">
+                        <span class="bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                          MFG DATE : ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
                         </span>
-                        <span class="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-center">
-                          EXP DATE<br>
-                          <span class="text-[10px]">
-                            ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
-                          </span>
+                        <span class="text-slate-400">|</span>
+                        <span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">
+                          EXP DATE : ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
                         </span>
                       </div>
 
@@ -26869,18 +26546,13 @@ async function(resultIndex,index){
 
               </div>
 
-              <div class="flex flex-col items-stretch gap-1 text-[9px] font-bold whitespace-nowrap min-w-[112px]">
-                <span class="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-center">
-                  MFG DATE<br>
-                  <span class="text-[10px]">
-                    ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
-                  </span>
+              <div class="flex items-center gap-1 text-[10px] font-bold whitespace-nowrap mb-1">
+                <span class="text-green-700">
+                  MFG DATE : ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
                 </span>
-                <span class="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-center">
-                  EXP DATE<br>
-                  <span class="text-[10px]">
-                    ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
-                  </span>
+                <span class="text-slate-400">|</span>
+                <span class="text-red-600">
+                  EXP DATE : ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
                 </span>
               </div>
 

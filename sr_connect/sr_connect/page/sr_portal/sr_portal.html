@@ -258,8 +258,71 @@
           window.location.href = '/api/method/logout'
         }
 
-        const installApp = () => {
-          alert('Install prompt triggered!')
+        let deferredInstallPrompt = null
+
+        window.addEventListener('beforeinstallprompt', (event) => {
+          event.preventDefault()
+          deferredInstallPrompt = event
+          window.__srDeferredInstallPrompt = event
+
+          if (typeof showInstall !== 'undefined' && showInstall) {
+            showInstall.value = true
+          }
+        })
+
+        window.addEventListener('appinstalled', () => {
+          deferredInstallPrompt = null
+          window.__srDeferredInstallPrompt = null
+
+          if (typeof showInstall !== 'undefined' && showInstall) {
+            showInstall.value = false
+          }
+        })
+
+        const installApp = async () => {
+          const promptEvent =
+            deferredInstallPrompt ||
+            window.__srDeferredInstallPrompt
+
+          if (!promptEvent) {
+            alert(
+              'Chrome install prompt এখন available নয়। Page-টি একবার refresh করে আবার Install চাপুন।'
+            )
+            return
+          }
+
+          try {
+            promptEvent.prompt()
+
+            const choice =
+              await promptEvent.userChoice
+
+            deferredInstallPrompt = null
+            window.__srDeferredInstallPrompt = null
+
+            console.log(
+              'SR Connect install:',
+              choice && choice.outcome
+            )
+
+            if (
+              choice &&
+              choice.outcome === 'accepted'
+            ) {
+              if (
+                typeof showInstall !== 'undefined' &&
+                showInstall
+              ) {
+                showInstall.value = false
+              }
+            }
+
+          } catch (error) {
+            console.error(
+              'SR Connect install failed:',
+              error
+            )
+          }
         }
 
         return {

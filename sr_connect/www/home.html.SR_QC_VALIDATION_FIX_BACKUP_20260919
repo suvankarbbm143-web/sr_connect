@@ -3909,135 +3909,6 @@ button{-webkit-tap-highlight-color:transparent}
 }
 
 </style>
-
-<style id="sr-bmr-a4-one-page">
-@media print {
-  @page {
-    size: A4 portrait;
-    margin: 4mm;
-  }
-
-  html,
-  body {
-    width: 210mm !important;
-    height: 297mm !important;
-    min-height: 297mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-  }
-
-  body * {
-    visibility: hidden !important;
-  }
-
-  #srBMRDetailsView,
-  #srBMRDetailsView * {
-    visibility: visible !important;
-  }
-
-  #srBMRDetailsView {
-    display: block !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 202mm !important;
-    height: 289mm !important;
-    max-height: 289mm !important;
-    overflow: hidden !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: white !important;
-  }
-
-  #srBMRDetailsView > div {
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  #srBMRPrintArea {
-    width: 202mm !important;
-    max-width: 202mm !important;
-    min-height: 0 !important;
-    max-height: 289mm !important;
-    overflow: hidden !important;
-    box-sizing: border-box !important;
-    padding: 5mm !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    font-size: 8.5px !important;
-    line-height: 1.15 !important;
-  }
-
-  #srBMRPrintArea .text-xl {
-    font-size: 15px !important;
-  }
-
-  #srBMRPrintArea .text-lg {
-    font-size: 12px !important;
-  }
-
-  #srBMRPrintArea .text-sm {
-    font-size: 9px !important;
-  }
-
-  #srBMRPrintArea .text-xs {
-    font-size: 8px !important;
-  }
-
-  #srBMRPrintArea .text-\[10px\],
-  #srBMRPrintArea .text-\[9px\] {
-    font-size: 7px !important;
-  }
-
-  #srBMRPrintArea table {
-    width: 100% !important;
-    font-size: 7.5px !important;
-    border-collapse: collapse !important;
-  }
-
-  #srBMRPrintArea th,
-  #srBMRPrintArea td {
-    padding: 2px 3px !important;
-    line-height: 1.1 !important;
-  }
-
-  #srBMRPrintArea .p-6 {
-    padding: 4mm !important;
-  }
-
-  #srBMRPrintArea .p-5,
-  #srBMRPrintArea .p-4,
-  #srBMRPrintArea .p-3 {
-    padding: 2.5mm !important;
-  }
-
-  #srBMRPrintArea .mb-6 {
-    margin-bottom: 3mm !important;
-  }
-
-  #srBMRPrintArea .mb-5,
-  #srBMRPrintArea .mb-4 {
-    margin-bottom: 2.5mm !important;
-  }
-
-  #srBMRPrintArea .mt-3 {
-    margin-top: 1.5mm !important;
-  }
-
-  #srBMRDetailsView button {
-    display: none !important;
-  }
-
-  #srBMRPrintArea,
-  #srBMRPrintArea * {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-}
-</style>
-
 </head>
 
 <body>
@@ -4151,7 +4022,7 @@ button{-webkit-tap-highlight-color:transparent}
     </button>
   </div>
   <div class="mt-6">
-    <button type="button" onclick="return installApp(event)" id="installBottomBtn" class="hidden w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold">📱 Install SR Connect App</button>
+    <button onclick="installApp()" id="installBottomBtn" class="hidden w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold">📱 Install SR Connect App</button>
   </div>
   <div class="mt-3">
     <button onclick="enableNotifications()" id="notificationBtn" class="w-full py-3 rounded-xl bg-white border text-slate-700 text-xs font-bold">🔔 Enable Job Card Notifications</button>
@@ -4507,17 +4378,6 @@ button{-webkit-tap-highlight-color:transparent}
 
 
 
-
-<!-- =========================================================
-     SR BMR DETAILS - SEPARATE PAGE
-     ========================================================= -->
-<section
-  id="srBMRDetailsView"
-  class="hidden flex-1 bg-slate-50 p-4 overflow-y-auto"
->
-  <div id="srBMRDetailsContent"></div>
-</section>
-
 <!-- WORK ORDER DETAIL -->
 <section id="workOrderView" class="hidden flex-1 bg-slate-50 p-4">
   <div id="workOrderContent"></div>
@@ -4557,7 +4417,7 @@ let rawItems=[];
 let selectedJob=null;
 let selectedWorkOrder=null;
 let timerInterval=null;
-window.deferredInstallPrompt = null;
+let deferredInstallPrompt=null;
 let jobFilter="All";
 let srDraftWorkOrderId = "";
 
@@ -4595,7 +4455,6 @@ function hideAll(){
     "createWorkOrderView",
     "qcInspectionView",
     "srProductCOAView",
-    "srBMRDetailsView",
     "profileView"
   ].forEach(id=>{
     const el=document.getElementById(id);
@@ -5536,20 +5395,8 @@ function goBack(){
 
   if(currentView === "job"){
 
-    if(typeof backFromBatchJobs === "function"){
-
-      /*
-       * Job Detail -> Back:
-       * restore the exact batch from which this Job was opened.
-       * Do NOT show the complete Job Card list here.
-       */
-      if(
-        selectedJob &&
-        selectedJob.batch_no
-      ){
-        window.srJCSelectedBatch =
-          String(selectedJob.batch_no).trim();
-      }
+    if(typeof backFromBatchJobs === "function" &&
+       localStorage.getItem("sr_current_batch")){
 
       backFromBatchJobs();
       return;
@@ -5786,48 +5633,6 @@ function goBack(){
 
 
   if(
-    currentView === "qcBMRDetail"
-  ){
-
-    const qcView =
-      document.getElementById("qcInspectionView");
-
-    const bmrView =
-      document.getElementById("srBMRDetailsView");
-
-    if(bmrView){
-      bmrView.classList.add("hidden");
-    }
-
-    if(qcView){
-      qcView.classList.remove("hidden");
-    }
-
-    currentView = "qcBatchDetail";
-
-    if(
-      window.srQCState &&
-      srQCState.batch &&
-      typeof srQCOpenBatch === "function"
-    ){
-      srQCOpenBatch(srQCState.batch);
-    }
-
-    return;
-  }
-
-  if(
-    currentView === "qcBMRList"
-  ){
-
-    srQCOpenBatch(
-      srQCState.batch
-    );
-
-    return;
-  }
-
-  if(
     currentView === "qcBatchDetail"
   ){
 
@@ -6051,76 +5856,30 @@ function goBack(){
 
 
 
-
-/* =========================================================
-   PWA SERVICE WORKER
-   ========================================================= */
-
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/assets/sr_connect/sw.js", {
-            scope: "/"
-        }).catch(function (err) {
-            console.warn("SR Connect service worker registration failed:", err);
-        });
-    });
-}
-
 /* =========================================================
    INSTALL
    ========================================================= */
 
-window.addEventListener("beforeinstallprompt", function(e) {
-    e.preventDefault();
-    window.deferredInstallPrompt = e;
+window.addEventListener("beforeinstallprompt",e=>{
+  e.preventDefault();
+  deferredInstallPrompt=e;
 });
 
-window.addEventListener("appinstalled", function() {
-    window.deferredInstallPrompt = null;
+window.addEventListener("appinstalled",()=>{
+  deferredInstallPrompt=null;
 });
 
-async function installApp(event) {
+async function installApp(){
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt=null;
+    return;
+  }
 
-    if (event) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-    }
-
-    const promptEvent =
-        window.deferredInstallPrompt;
-
-    if (!promptEvent) {
-        alert(
-            "Chrome menu theke Install SR Connect select korun."
-        );
-        return false;
-    }
-
-    try {
-
-        promptEvent.prompt();
-
-        const choice =
-            await promptEvent.userChoice;
-
-        window.deferredInstallPrompt = null;
-
-        console.log(
-            "SR Connect install:",
-            choice && choice.outcome
-        );
-
-    } catch (err) {
-
-        console.error(
-            "SR Connect install error:",
-            err
-        );
-
-    }
-
-    return false;
+  alert("Browser menu থেকে Add to Home Screen / Install App দিন।");
 }
+
 
 /* =========================================================
    SR CONNECT QC INSPECTION UI V1
@@ -7075,36 +6834,6 @@ function srQCToggleBatchCOA(button){
 
 }
 
-function srQCBackFromBMR(){
-  try{
-    const state = window.srQCState || {};
-    const batchNo = String(state.batch || "").trim();
-
-    if(batchNo && typeof srQCOpenBatch === "function"){
-      currentView = "qcBatchDetail";
-      srQCOpenBatch(batchNo);
-      return;
-    }
-
-    if(typeof srQCOpenItem === "function" && state.item && state.item.item_code){
-      srQCOpenItem(
-        state.item.item_code,
-        state.item.item_name || state.item.item_code
-      );
-      return;
-    }
-
-    if(typeof showManufacturing === "function"){
-      showManufacturing();
-    }
-  }catch(e){
-    console.error("SR BMR BACK ERROR:", e);
-    if(typeof showManufacturing === "function"){
-      showManufacturing();
-    }
-  }
-}
-
 async function srQCOpenBMRList(){
 
   const box =
@@ -7229,66 +6958,11 @@ async function srQCOpenBMRList(){
 }
 
 
-
-function srQCBackFromDetailsPage(){
-
-  try{
-
-    currentView = "qcBatchDetail";
-
-    const qcView =
-      document.getElementById("qcInspectionView");
-
-    if(qcView){
-      qcView.classList.remove("hidden");
-    }
-
-    const box =
-      document.getElementById("qcInspectionContent");
-
-    if(box){
-      box.classList.remove("hidden");
-    }
-
-    const batch =
-      window.srQCState &&
-      window.srQCState.batch
-        ? window.srQCState.batch
-        : "";
-
-    if(batch && typeof srQCOpenBatch === "function"){
-      srQCOpenBatch(batch);
-      return;
-    }
-
-    if(typeof openSRQCInspection === "function"){
-      openSRQCInspection();
-      return;
-    }
-
-    console.error("SR BMR BACK: Batch state not found.");
-
-  }catch(e){
-
-    console.error(
-      "SR BMR BACK ERROR:",
-      e
-    );
-
-  }
-
-}
-
-
 async function srQCOpenBMR(stockEntryName){
 
   try{
 
     currentView = "qcBMRDetail";
-
-    if(typeof hideAll === "function"){
-      hideAll();
-    }
 
     const response = await fetch(
       "/api/method/sr_connect.www.home.sr_qc_get_bmr_detail"
@@ -7307,79 +6981,40 @@ async function srQCOpenBMR(stockEntryName){
 
     if(!response.ok){
       throw new Error(
-        data && data.message
-          ? data.message
-          : "BMR request failed."
+        data?.exception ||
+        data?.message ||
+        "BMR request failed."
       );
     }
 
-    const bmr = data && data.message
-      ? data.message
-      : data;
+    const bmr = data?.message || data;
 
     if(!bmr || bmr.success !== true){
-      throw new Error(
-        bmr && bmr.message
-          ? bmr.message
-          : "BMR data not available."
-      );
+      throw new Error("BMR data not available.");
     }
 
-    const esc =
-      typeof escapeHtml === "function"
-        ? escapeHtml
-        : function(v){
-            return String(v == null ? "" : v)
-              .replace(/&/g,"&amp;")
-              .replace(/</g,"&lt;")
-              .replace(/>/g,"&gt;")
-              .replace(/"/g,"&quot;")
-              .replace(/'/g,"&#039;");
-          };
+    const esc = function(v){
+      return String(v ?? "")
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;")
+        .replace(/'/g,"&#039;");
+    };
 
     const qty = function(v){
-      const n = Number(v || 0);
+      const n=Number(v);
       if(!Number.isFinite(n)) return "";
       return Number.isInteger(n)
         ? String(n)
         : n.toFixed(3).replace(/0+$/,"").replace(/\.$/,"");
     };
 
-    const root =
-      document.getElementById("srBMRDetailsContent");
-
-    if(!root){
-      throw new Error("BMR Details page not found.");
-    }
-
-    document
-      .querySelectorAll("section")
-      .forEach(function(section){
-        section.classList.add("hidden");
-      });
-
-    const bmrPage =
-      document.getElementById("srBMRDetailsView");
-
-    if(!bmrPage){
-      throw new Error("BMR Details view not found.");
-    }
-
-    bmrPage.classList.remove("hidden");
-
-    document.getElementById("pageTitle").innerText =
-      "BMR Details";
-
-    document.getElementById("pageSub").innerText =
-      bmr.bmr_name || bmr.name || "Manufacture Stock Entry";
-
-    const topBack =
-      document.getElementById("backBtn");
-
-    if(topBack){
-      topBack.classList.remove("hidden");
-    }
-
+    /*
+     * IMPORTANT:
+     * Use the exact materials array returned by the API.
+     * Do not rebuild it from BOM or another source.
+     */
     const materials =
       Array.isArray(bmr.materials)
         ? bmr.materials
@@ -7390,11 +7025,123 @@ async function srQCOpenBMR(stockEntryName){
         ? bmr.finished_items
         : [];
 
-    let html = `
+    const root =
+      document.getElementById("app") ||
+      document.body;
 
-      <div class="max-w-5xl mx-auto px-4 pb-10">
+    let materialRows = "";
+
+    if(materials.length){
+
+      materialRows = materials.map(function(row,index){
+
+        return `
+          <tr class="border-t border-slate-200">
+
+            <td class="p-3 text-center">
+              ${index + 1}
+            </td>
+
+            <td class="p-3">
+              <div class="font-bold">
+                ${esc(row.item_name || row.item_code || "-")}
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1">
+                ${esc(row.item_code || "")}
+              </div>
+            </td>
+
+            <td class="p-3">
+              ${esc(row.s_warehouse || "-")}
+            </td>
+
+            <td class="p-3 text-right font-bold">
+              ${esc(qty(row.qty))}
+            </td>
+
+            <td class="p-3">
+              ${esc(row.uom || "-")}
+            </td>
+
+            <td class="p-3">
+              ${esc(row.batch_no || "-")}
+            </td>
+
+          </tr>
+        `;
+
+      }).join("");
+
+    }else{
+
+      materialRows = `
+        <tr>
+          <td
+            colspan="6"
+            class="p-5 text-center text-slate-400"
+          >
+            No material rows found in Material Consumption for Manufacture.
+          </td>
+        </tr>
+      `;
+
+    }
+
+    let finishedRows = "";
+
+    if(finished.length){
+
+      finishedRows = finished.map(function(row){
+
+        return `
+          <tr class="border-t border-slate-200">
+
+            <td class="p-3 font-bold">
+              ${esc(row.item_name || row.item_code || "-")}
+            </td>
+
+            <td class="p-3">
+              ${esc(row.uom || "-")}
+            </td>
+
+            <td class="p-3">
+              ${esc(row.batch_no || bmr.batch_no || "-")}
+            </td>
+
+            <td class="p-3 text-right font-bold">
+              ${esc(qty(row.qty))}
+            </td>
+
+          </tr>
+        `;
+
+      }).join("");
+
+    }else{
+
+      finishedRows = `
+        <tr>
+          <td colspan="4" class="p-5 text-center text-slate-400">
+            No finished product row found.
+          </td>
+        </tr>
+      `;
+
+    }
+
+    root.innerHTML = `
+
+      <div class="max-w-6xl mx-auto px-4 pb-10">
 
         <div class="flex items-center justify-between mb-4">
+
+          <button
+            type="button"
+            onclick="srQCBackFromBMR()"
+            class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold"
+          >
+            ← BACK
+          </button>
 
           <button
             type="button"
@@ -7411,23 +7158,23 @@ async function srQCOpenBMR(stockEntryName){
           class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm"
         >
 
-          <div class="text-center border-b border-slate-300 pb-5 mb-5">
+          <div class="text-center border-b border-slate-300 pb-5 mb-6">
 
             <div class="text-xl font-extrabold tracking-wide">
               BATCH MANUFACTURING RECORD
             </div>
 
             <div class="text-xs text-slate-500 mt-1">
-              FINAL MANUFACTURE STOCK ENTRY
+              FINAL STOCK ENTRY
             </div>
 
-            <div class="text-lg font-bold mt-3">
+            <div class="text-lg font-extrabold mt-3">
               ${esc(bmr.bmr_name || bmr.name || "-")}
             </div>
 
           </div>
 
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-7">
 
             <div class="border rounded-xl p-3">
               <div class="text-[10px] text-slate-400 font-bold">
@@ -7467,100 +7214,68 @@ async function srQCOpenBMR(stockEntryName){
 
           </div>
 
-          <div class="mb-7">
+          <div class="mb-8">
 
             <div class="text-sm font-extrabold mb-3">
               FINAL PRODUCT
             </div>
 
-            <div class="overflow-x-auto border rounded-xl">
+            <div class="border rounded-xl overflow-hidden">
 
               <table class="w-full text-xs">
 
                 <thead class="bg-slate-100">
+
                   <tr>
                     <th class="text-left p-3">ITEM NAME</th>
                     <th class="text-left p-3">UOM</th>
                     <th class="text-left p-3">BATCH NO</th>
                     <th class="text-right p-3">FINAL QTY</th>
                   </tr>
+
                 </thead>
 
                 <tbody>
-
-                  ${
-                    finished.length
-                    ? finished.map(function(row){
-
-                        return `
-                          <tr class="border-t">
-
-                            <td class="p-3 font-semibold">
-                              ${esc(row.item_name || row.item_code || "-")}
-                            </td>
-
-                            <td class="p-3">
-                              ${esc(row.uom || "-")}
-                            </td>
-
-                            <td class="p-3">
-                              ${esc(row.batch_no || bmr.batch_no || "-")}
-                            </td>
-
-                            <td class="p-3 text-right font-bold">
-                              ${esc(qty(row.qty))}
-                            </td>
-
-                          </tr>
-                        `;
-
-                      }).join("")
-                    : `
-                      <tr>
-                        <td colspan="4" class="p-4 text-center text-slate-400">
-                          No finished product row found.
-                        </td>
-                      </tr>
-                    `
-                  }
-
+                  ${finishedRows}
                 </tbody>
 
               </table>
 
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div class="flex justify-end mt-3">
 
               <div class="border rounded-xl px-5 py-3 text-right">
-                <div class="text-[10px] text-slate-400 font-bold">
-                  PRODUCTION QUANTITY
-                </div>
-                <div class="text-xl font-extrabold">
-                  ${esc(qty(bmr.work_order_qty))}
-                </div>
-              </div>
 
-              <div class="border rounded-xl px-5 py-3 text-right">
                 <div class="text-[10px] text-slate-400 font-bold">
-                  FINAL QUANTITY
+                  TOTAL FINAL QTY
                 </div>
+
                 <div class="text-xl font-extrabold">
-                  ${esc(qty(bmr.final_qty))}
+                  ${esc(qty(bmr.finished_qty))}
                 </div>
+
               </div>
 
             </div>
 
           </div>
 
-          <div class="mb-7">
+          <div class="mb-8">
 
-            <div class="text-sm font-extrabold mb-3">
-              MATERIALS USED
+            <div class="flex items-center justify-between mb-3">
+
+              <div class="text-sm font-extrabold">
+                MATERIALS USED
+              </div>
+
+              <div class="text-[10px] text-slate-400">
+                ${materials.length} ITEM(S)
+              </div>
+
             </div>
 
-            <div class="overflow-x-auto border rounded-xl">
+            <div class="border rounded-xl overflow-hidden">
 
               <table class="w-full text-xs">
 
@@ -7568,110 +7283,77 @@ async function srQCOpenBMR(stockEntryName){
 
                   <tr>
 
-                    <th class="text-left p-3">#</th>
-                    <th class="text-left p-3">ITEM NAME</th>
-                    <th class="text-right p-3">QTY USED</th>
-                    <th class="text-left p-3">UOM</th>
-                    <th class="text-left p-3">BATCH NO</th>
-                    <th class="text-left p-3">WAREHOUSE</th>
-                    <th class="text-left p-3">BRAND</th>
+                    <th class="p-3 text-center">#</th>
+
+                    <th class="p-3 text-left">
+                      ITEM NAME
+                    </th>
+
+                    <th class="p-3 text-left">
+                      SOURCE WAREHOUSE
+                    </th>
+
+                    <th class="p-3 text-right">
+                      QTY
+                    </th>
+
+                    <th class="p-3 text-left">
+                      UOM
+                    </th>
+
+                    <th class="p-3 text-left">
+                      BATCH NO
+                    </th>
 
                   </tr>
 
                 </thead>
 
                 <tbody>
-
-                  ${
-                    materials.length
-                    ? materials.map(function(row,index){
-
-                        return `
-                          <tr class="border-t">
-
-                            <td class="p-3">
-                              ${index + 1}
-                            </td>
-
-                            <td class="p-3 font-semibold">
-                              ${esc(row.item_name || row.item_code || "-")}
-                            </td>
-
-                            <td class="p-3 text-right font-bold">
-                              ${esc(qty(row.qty))}
-                            </td>
-
-                            <td class="p-3">
-                              ${esc(row.uom || "-")}
-                            </td>
-
-                            <td class="p-3">
-                              ${esc(row.batch_no || "-")}
-                            </td>
-
-                            <td class="p-3">
-                              ${esc(row.s_warehouse || "-")}
-                            </td>
-
-                            <td class="p-3">
-                              ${esc(row.brand || "-")}
-                            </td>
-
-                          </tr>
-                        `;
-
-                      }).join("")
-                    : `
-                      <tr>
-                        <td colspan="7" class="p-5 text-center text-slate-400">
-                          No submitted material consumption rows found.
-                        </td>
-                      </tr>
-                    `
-                  }
-
+                  ${materialRows}
                 </tbody>
 
               </table>
 
             </div>
 
-            <div class="text-[10px] text-slate-400 mt-2">
-              ${materials.length} actual material row(s) from submitted Material Consumption for Manufacture.
+          </div>
+
+          <div class="border-t border-slate-300 pt-5">
+
+            <div class="grid grid-cols-2 gap-4">
+
+              <div>
+
+                <div class="text-[10px] text-slate-400 font-bold">
+                  STOCK ENTRY
+                </div>
+
+                <div class="text-sm font-bold mt-1">
+                  ${esc(bmr.name || "-")}
+                </div>
+
+              </div>
+
+              <div>
+
+                <div class="text-[10px] text-slate-400 font-bold">
+                  POSTING DATE / TIME
+                </div>
+
+                <div class="text-sm font-bold mt-1">
+                  ${esc(bmr.posting_date || "-")}
+                  ${esc(bmr.posting_time || "")}
+                </div>
+
+              </div>
+
             </div>
 
           </div>
 
-          <div class="grid grid-cols-2 gap-4 border-t pt-5">
-
-            <div>
-
-              <div class="text-[10px] text-slate-400 font-bold">
-                STOCK ENTRY DATE
-              </div>
-
-              <div class="text-sm font-semibold mt-1">
-                ${esc(bmr.posting_date || "-")}
-              </div>
-
-            </div>
-
-            <div>
-
-              <div class="text-[10px] text-slate-400 font-bold">
-                STOCK ENTRY TIME
-              </div>
-
-              <div class="text-sm font-semibold mt-1">
-                ${esc(bmr.posting_time || "-")}
-              </div>
-
-            </div>
-
-          </div>
-
-          <div class="mt-8 pt-5 border-t text-[10px] text-slate-400 text-center">
-            Generated from submitted ERPNext Stock Entry data.
+          <div class="text-center text-[10px] text-slate-400 mt-8 pt-4 border-t">
+            Generated from submitted ERPNext Stock Entry records.
           </div>
 
         </div>
@@ -7679,799 +7361,21 @@ async function srQCOpenBMR(stockEntryName){
       </div>
 
     `;
-
-    root.innerHTML = html;
 
   }catch(e){
 
-    console.error("SR BMR DETAIL ERROR:", e);
+    console.error("BMR load failed:",e);
 
-    const root =
-      document.getElementById("app") ||
-      document.body;
-
-    root.innerHTML = `
-
-      <div class="max-w-xl mx-auto px-4 py-10">
-
-        <button
-          type="button"
-          onclick="srQCOpenBMRList()"
-          class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold mb-5"
-        >
-          ← BACK
-        </button>
-
-        <div class="bg-rose-50 border border-rose-200 rounded-2xl p-5">
-
-          <div class="font-extrabold text-rose-700">
-            BMR Load Failed
-          </div>
-
-          <div class="text-xs text-rose-600 mt-2">
-            ${String(e && e.message || "Unable to load BMR.")}
-          </div>
-
-        </div>
-
-      </div>
-
-    `;
-
-  }
-
-}
-
-
-async function srQCOpenBatch(batchNo){
-
-  srQCState.batch = batchNo;
-
-  const box =
-    document.getElementById(
-      "qcInspectionContent"
+    alert(
+      e && e.message
+        ? e.message
+        : "BMR request failed."
     );
 
-  if(!box){
-    return;
-  }
-
-  box.innerHTML = `
-    <div class="bg-white border rounded-2xl p-4">
-      <div class="text-xs text-slate-400">
-        Loading QC template...
-      </div>
-    </div>
-  `;
-
-  try{
-
-    const result =
-      await api(
-        "/api/method/sr_connect.www.home.sr_qc_get_batch"
-        + "?item_code="
-        + encodeURIComponent(
-            srQCState.item.item_code
-          )
-        + "&batch_no="
-        + encodeURIComponent(
-            batchNo
-          )
-        + "&category="
-        + encodeURIComponent(
-            srQCState.category
-          )
-      );
-
-    const completed =
-      !!result.completed;
-
-    const readings =
-      Array.isArray(result.readings)
-        ? result.readings
-        : [];
-
-    srQCState.template =
-      result.quality_inspection_template
-      || "";
-
-    box.innerHTML = `
-
-      <div class="space-y-3">
-
-        <div class="bg-white border rounded-2xl p-4 shadow-sm">
-
-          <div class="flex items-start justify-between gap-3">
-
-            <div>
-
-              <div class="text-[10px] text-slate-400">
-                BATCH NO
-              </div>
-
-              <div class="font-bold text-base mt-1">
-                ${escapeHtml(batchNo)}
-              </div>
-
-              <div class="text-[10px] text-slate-400 mt-1">
-                ${escapeHtml(
-                  result.item_name
-                  || srQCState.item.item_name
-                  || srQCState.item.item_code
-                )}
-              </div>
-
-            </div>
-
-            <div class="flex items-start gap-3">
-
-              ${
-                result.quality_inspection_template
-                ? `
-                  <div class="text-right">
-                    <div class="text-[9px] text-slate-400">
-                      TEMPLATE
-                    </div>
-                    <div class="text-[10px] font-bold">
-                      ${escapeHtml(
-                        result.quality_inspection_template
-                      )}
-                    </div>
-                  </div>
-                `
-                : ""
-              }
-
-              <button
-                type="button"
-                onclick="srQCOpenBMRList()"
-                class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-700 active:scale-95"
-                title="BMR"
-              >
-                <span style="font-size:15px;line-height:1">📁</span>
-                <span>BMR</span>
-              </button>
-
-            </div>
-
-          </div>
-
-          ${
-            completed
-            ? `
-              <div class="flex justify-end mt-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onclick="srQCPrintCompleted()"
-                  class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-sm active:scale-95"
-                  title="Print / Download COA"
-                >
-                  <span style="font-size:18px;line-height:1">🖨️</span>
-                  <span>PRINT</span>
-                </button>
-              </div>
-            `
-            : ""
-          }
-
-
-        </div>
-
-
-
-        <!-- SR QC MFG EXP DISPLAY -->
-        <div class="bg-white border rounded-2xl p-4 shadow-sm">
-
-          ${
-            result.work_order
-            ? `
-              <div class="mb-3">
-                <div class="text-[9px] text-slate-400">
-                  WORK ORDER
-                </div>
-                <div class="text-xs font-bold text-slate-800 mt-1">
-                  ${escapeHtml(result.work_order)}
-                </div>
-              </div>
-            `
-            : ""
-          }
-
-          <div class="grid grid-cols-2 gap-3">
-
-            <div class="bg-slate-50 rounded-xl p-3">
-              <div class="text-[9px] text-slate-400">
-                MFG DATE
-              </div>
-              <div class="text-xs font-bold text-slate-800 mt-1">
-                ${
-                  result.mfg_date
-                  ? escapeHtml(
-                      String(result.mfg_date)
-                        .slice(0,10)
-                        .split("-")
-                        .reverse()
-                        .join("-")
-                    )
-                  : "-"
-                }
-              </div>
-            </div>
-
-            <div class="bg-slate-50 rounded-xl p-3">
-              <div class="text-[9px] text-slate-400">
-                EXP DATE
-              </div>
-              <div class="text-xs font-bold text-slate-800 mt-1">
-                ${
-                  result.exp_date
-                  ? escapeHtml(
-                      String(result.exp_date)
-                        .slice(0,10)
-                        .split("-")
-                        .reverse()
-                        .join("-")
-                    )
-                  : "-"
-                }
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-
-        <!-- =====================================================
-             ERPNext Quality Inspection fields
-             ===================================================== -->
-
-        <div class="bg-white border rounded-2xl p-4 shadow-sm">
-
-          <div class="font-bold text-sm">
-            Inspection Details
-          </div>
-
-          <div class="space-y-3 mt-4">
-
-            ${
-              completed
-              ?
-              `
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
-                    Sample Size
-                  </label>
-
-                  <div
-                    class="w-full p-3 rounded-xl bg-slate-50 border text-xs font-semibold text-slate-700"
-                  >
-                    ${escapeHtml(
-                      String(
-                        result.sample_size
-                        || "-"
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
-                    Inspection Type
-                  </label>
-
-                  <div
-                    class="w-full p-3 rounded-xl bg-slate-50 border text-xs font-semibold text-slate-700"
-                  >
-                    ${escapeHtml(
-                      String(
-                        result.inspection_type
-                        || "-"
-                      )
-                    )}
-                  </div>
-                </div>
-              `
-              :
-              `
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
-                    Sample Size
-                  </label>
-
-                  <input
-                    id="srQCSampleSize"
-                    type="number"
-                    min="1"
-                    step="any"
-                    value="1"
-                    class="w-full p-3 rounded-xl bg-slate-100 border text-xs outline-none"
-                    placeholder="Enter Sample Size"
-                  >
-                </div>
-
-                <div>
-                  <label class="block text-[10px] font-bold text-slate-500 mb-1">
-                    Inspection Type
-                  </label>
-
-                  <select
-                    id="srQCInspectionType"
-                    class="w-full p-3 rounded-xl bg-slate-100 border text-xs outline-none"
-                  >
-                    <option value="Incoming">Incoming</option>
-                    <option value="Outgoing" selected>Outgoing</option>
-                    <option value="In Process">In Process</option>
-                  </select>
-                </div>
-              `
-            }
-
-          </div>
-
-        </div>
-
-
-        <div class="bg-white border rounded-2xl p-4 shadow-sm">
-
-          <div class="font-bold text-sm">
-            Inspection Parameters
-          </div>
-
-          <div class="text-[10px] text-slate-400 mt-1">
-            Specification and acceptance limits are fetched
-            automatically from the ERPNext Quality Inspection Template.
-          </div>
-
-
-          <div class="space-y-3 mt-4">
-
-            ${
-              readings.length
-              ?
-
-              readings.map(function(row,index){
-
-                const parameter =
-                    row.parameter ||
-                    row.parameter_name ||
-                    "";
-
-                const specification =
-                  row.specification
-                  || "";
-
-                const minValue =
-                  row.min_value
-                  || "";
-
-                const maxValue =
-                  row.max_value
-                  || "";
-
-                const criteria =
-                  row.criteria
-                  || "";
-
-                const numeric =
-                  !row.non_numeric
-                  && (
-                    minValue !== ""
-                    || maxValue !== ""
-                  );
-
-                const range =
-                  numeric
-                  ?
-                  (
-                    (minValue || "-")
-                    + " → "
-                    + (maxValue || "-")
-                  )
-                  :
-                  "";
-
-                const existingValue =
-                  row.value
-                  || "";
-
-                return `
-
-                  <div
-                    class="border rounded-xl p-3 bg-white"
-                    data-qc-row="${index}"
-                  >
-
-                    <div class="flex items-start justify-between gap-3">
-
-                      <div class="min-w-0">
-
-                        <div class="text-xs font-bold">
-                          ${escapeHtml(
-                            parameter
-                          )}
-                        </div>
-
-                        ${
-                          specification
-                          ?
-                          `
-                            <div class="text-[11px] text-slate-600 mt-2">
-                              <span class="font-semibold">
-                                Specification:
-                              </span>
-                              ${escapeHtml(
-                                specification
-                              )}
-                            </div>
-                          `
-                          :
-                          ""
-                        }
-
-                        ${
-                          range
-                          ?
-                          `
-                            <div class="text-[10px] text-indigo-600 mt-1 font-semibold">
-                              Allowed Range:
-                              ${escapeHtml(range)}
-                            </div>
-                          `
-                          :
-                          ""
-                        }
-
-                        ${
-                          criteria
-                          ?
-                          `
-                            <div class="text-[10px] text-emerald-600 mt-1 font-semibold">
-                              Acceptance:
-                              ${escapeHtml(criteria)}
-                            </div>
-                          `
-                          :
-                          ""
-                        }
-
-                      </div>
-
-                    </div>
-
-
-                    ${
-                      completed
-
-                      ?
-
-                      `
-                        <div class="mt-3 p-3 rounded-xl bg-slate-50 border">
-
-                          <div class="text-[9px] text-slate-400">
-                            RESULT
-                          </div>
-
-                          <div class="text-sm font-bold mt-1">
-                            ${escapeHtml(
-                              (
-                                row.numeric
-                                ? (
-                                    row.reading_1
-                                    ?? row.reading_value
-                                    ?? ""
-                                  )
-                                : (
-                                    row.reading_value
-                                    ?? row.reading_1
-                                    ?? ""
-                                  )
-                              )
-                              || "-"
-                            )}
-                          </div>
-
-                          ${
-                            row.status
-                            ?
-                            `
-                              <div class="text-[9px] mt-1 text-slate-400">
-                                ${escapeHtml(
-                                  row.status
-                                )}
-                              </div>
-                            `
-                            :
-                            ""
-                          }
-
-                        </div>
-                      `
-
-                      :
-
-                      `
-                        ${
-                          numeric
-                          ?
-                          `
-                            <input
-                              data-parameter="${escapeHtml(parameter)}"
-                              type="number"
-                              step="any"
-                              ${minValue !== "" ? `min="${escapeHtml(minValue)}"` : ""}
-                              ${maxValue !== "" ? `max="${escapeHtml(maxValue)}"` : ""}
-                              value="${escapeHtml(existingValue)}"
-                              class="sr-qc-input w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
-                              placeholder="Enter numeric value"
-                              autocomplete="off"
-                            >
-                          `
-                          :
-                          criteria
-                          ?
-                          `
-                            <select
-                              data-parameter="${escapeHtml(parameter)}"
-                              class="sr-qc-input w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
-                            >
-                              <option value="">Select</option>
-                              ${
-                                criteria
-                                  .split(/[\/|,;\n]+/)
-                                  .map(function(v){
-                                    return String(v).trim();
-                                  })
-                                  .filter(Boolean)
-                                  .map(function(v){
-                                    const selected =
-                                      String(existingValue || "").trim().toLowerCase()
-                                      === String(v).trim().toLowerCase()
-                                      ? " selected"
-                                      : "";
-
-                                    return `
-                                      <option value="${escapeHtml(v)}"${selected}>
-                                        ${escapeHtml(v)}
-                                      </option>
-                                    `;
-                                  })
-                                  .join("")
-                              }
-                            </select>
-                          `
-                          :
-                          `
-                            <input
-                              data-parameter="${escapeHtml(parameter)}"
-                              type="text"
-                              value="${escapeHtml(existingValue)}"
-                              class="sr-qc-input w-full mt-3 p-3 rounded-xl bg-slate-100 border text-xs outline-none"
-                              placeholder="Enter result"
-                              autocomplete="off"
-                            >
-                          `
-                        }
-
-                        <div
-                          id="srQCError_${index}"
-                          class="hidden text-[10px] text-rose-600 mt-1"
-                        ></div>
-                      `
-                    }
-
-                  </div>
-
-                `;
-
-              }).join("")
-
-              :
-
-              `
-                <div class="p-3 bg-slate-50 border rounded-xl text-[10px] text-slate-400">
-                  No Quality Inspection parameters were found in the
-                  item's assigned template.
-                </div>
-              `
-            }
-
-          </div>
-
-
-          ${
-            !completed
-            ?
-
-            `
-              <div
-                id="srQCOverallStatus"
-                class="hidden mt-4 p-3 rounded-xl text-xs font-bold"
-              ></div>
-
-
-              <div class="grid grid-cols-2 gap-2 mt-4">
-
-                <button
-                  onclick="srQCSaveBatch()"
-                  class="py-3 bg-white border border-slate-300 text-slate-800 rounded-xl text-xs font-bold"
-                >
-                  SAVE
-                </button>
-
-                <button
-                  onclick="srQCSubmitBatch()"
-                  class="py-3 bg-slate-900 text-white rounded-xl text-xs font-bold"
-                >
-                  SUBMIT QC INSPECTION
-                </button>
-
-              </div>
-            `
-
-            :
-
-            ""
-          }
-
-        </div>
-
-      </div>
-
-    `;
-
-    if(!completed){
-
-      window.srQCTemplateRows = readings;
-
-      if(!readings.length){
-
-        const status =
-          document.getElementById(
-            "srQCOverallStatus"
-          );
-
-        if(status){
-          status.classList.remove("hidden");
-          status.classList.remove(
-            "bg-emerald-50",
-            "text-emerald-700"
-          );
-          status.classList.add(
-            "bg-rose-50",
-            "text-rose-700"
-          );
-
-          status.innerText =
-            "✕ TEMPLATE ERROR — No parameters found.";
-        }
-
-      }
-
-      document
-        .querySelectorAll(
-          '.sr-qc-input'
-        )
-        .forEach(function(input){
-
-          input.addEventListener(
-            "input",
-            function(){
-              srQCValidateBatch(
-                false
-              );
-            }
-          );
-
-        });
-
-      srQCValidateBatch(false);
-
-    }
-
-  }catch(e){
-
-    box.innerHTML = `
-      <div class="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs text-rose-600">
-        ${escapeHtml(
-          e.message
-          || "Unable to load QC template."
-        )}
-      </div>
-    `;
-
   }
 
 }
 
-
-function srQCCollectReadings(){
-  const readings = [];
-
-  document
-    .querySelectorAll('.sr-qc-input')
-    .forEach(function(input, index){
-      readings.push({
-        index: index,
-        parameter: input.dataset.parameter || "",
-        value: String(input.value || "").trim()
-      });
-    });
-
-  return readings;
-}
-
-
-async function srQCGetTemplateRows(){
-
-  const result =
-    await api(
-      "/api/method/sr_connect.www.home.sr_qc_get_batch"
-      + "?item_code="
-      + encodeURIComponent(
-          srQCState.item.item_code
-        )
-      + "&batch_no="
-      + encodeURIComponent(
-          srQCState.batch
-        )
-      + "&category="
-      + encodeURIComponent(
-          srQCState.category
-        )
-    );
-
-  return Array.isArray(
-    result.readings
-  )
-    ? result.readings
-    : [];
-}
-
-
-function srQCValidateBatch(showAlert){
-  const inputs =
-    Array.from(
-      document.querySelectorAll(".sr-qc-input")
-    );
-
-  const rows =
-    Array.isArray(window.srQCTemplateRows)
-      ? window.srQCTemplateRows
-      : [];
-
-  let valid = true;
-  const errors = [];
-  let firstInvalid = null;
-
-  function getAllowedValues(criteria){
-    const text = String(criteria || "").trim();
-
-    if(!text){
-      return [];
-    }
-
-    // Formula:
-    // reading_value in ("White", "Neutral")
-    const formulaValues =
-      text.match(/["']([^"']+)["']/g);
-
-    if(formulaValues && formulaValues.length){
-      return formulaValues
-        .map(function(v){
-          return v
-            .replace(/^["']|["']$/g, "")
-            .trim();
-        })
-        .filter(Boolean);
-    }
-
-    return text
-      .split(/[\/|,;\n]+/)
-      .map(function(v){
-        return String(v).trim();
-      })
-      .filter(Boolean);
-  }
 
   inputs.forEach(function(input, index){
 
@@ -8683,8 +7587,8 @@ function srQCValidateBatch(showAlert){
     }
 
     alert(
-    errors.join("\n")
-  );
+      errors.join("\n")
+    );
   }
 
   return {
@@ -11116,16 +10020,7 @@ function setJobFilter(filter){
   }
 
   updateJobFilterButtons();
-
-  /*
-   * Job Card tab change must always reload fresh data.
-   * This clears any previously selected batch/job filter.
-   */
-  if(currentDocType === "Job Card"){
-    loadList("Job Card", false);
-  }else{
-    renderList();
-  }
+  renderList();
 
 }
 
@@ -15313,6 +14208,18 @@ async function restorePage(){
 
 }
 
+
+/* =========================================================
+   SERVICE WORKER
+   ========================================================= */
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker
+      .register("/sw.js")
+      .catch(e=>console.error("SW:",e));
+  });
+}
 
 window.addEventListener("load",()=>{
   if(localStorage.getItem("sr_notifications_enabled")==="1" && "Notification" in window && Notification.permission==="granted") startNotificationPolling();
@@ -26728,18 +25635,13 @@ async function(resultIndex,index){
 
                       </div>
 
-                      <div class="flex flex-col items-stretch gap-1 text-[9px] font-bold whitespace-nowrap min-w-[112px]">
-                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-center">
-                          MFG DATE<br>
-                          <span class="text-[10px]">
-                            ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
-                          </span>
+                      <div class="flex items-center gap-1 text-[10px] font-bold whitespace-nowrap mb-1">
+                        <span class="bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                          MFG DATE : ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
                         </span>
-                        <span class="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-center">
-                          EXP DATE<br>
-                          <span class="text-[10px]">
-                            ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
-                          </span>
+                        <span class="text-slate-400">|</span>
+                        <span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">
+                          EXP DATE : ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
                         </span>
                       </div>
 
@@ -26869,18 +25771,13 @@ async function(resultIndex,index){
 
               </div>
 
-              <div class="flex flex-col items-stretch gap-1 text-[9px] font-bold whitespace-nowrap min-w-[112px]">
-                <span class="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-center">
-                  MFG DATE<br>
-                  <span class="text-[10px]">
-                    ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
-                  </span>
+              <div class="flex items-center gap-1 text-[10px] font-bold whitespace-nowrap mb-1">
+                <span class="text-green-700">
+                  MFG DATE : ${srJCEscape(String(jobs[0]?.custom_date || "").slice(0,10).split("-").reverse().join("-"))}
                 </span>
-                <span class="bg-red-100 text-red-600 px-2 py-1 rounded-lg text-center">
-                  EXP DATE<br>
-                  <span class="text-[10px]">
-                    ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
-                  </span>
+                <span class="text-slate-400">|</span>
+                <span class="text-red-600">
+                  EXP DATE : ${srJCEscape(String(jobs[0]?.custom_exp_date || "").slice(0,10).split("-").reverse().join("-"))}
                 </span>
               </div>
 

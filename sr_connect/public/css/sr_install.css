@@ -1,0 +1,60 @@
+#sr-install-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: rgba(15, 23, 42, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+#sr-install-card {
+    width: 100%;
+    max-width: 360px;
+    background: #ffffff;
+    border-radius: 22px;
+    padding: 28px 22px 22px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+
+.sr-install-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.sr-install-title {
+    font-size: 21px;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 8px;
+}
+
+.sr-install-text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #64748b;
+    margin-bottom: 20px;
+}
+
+#sr-install-btn {
+    width: 100%;
+    border: 0;
+    border-radius: 12px;
+    padding: 13px 16px;
+    background: #0f172a;
+    color: white;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+#sr-install-close {
+    margin-top: 10px;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 13px;
+    cursor: pointer;
+}

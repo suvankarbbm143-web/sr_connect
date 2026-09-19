@@ -1,0 +1,10 @@
+{
+  "name": "SR Connect",
+  "short_name": "SR Connect",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": []
+}

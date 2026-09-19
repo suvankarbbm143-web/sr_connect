@@ -4151,7 +4151,7 @@ button{-webkit-tap-highlight-color:transparent}
     </button>
   </div>
   <div class="mt-6">
-    <button type="button" onclick="return installApp(event)" id="installBottomBtn" class="hidden w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold">📱 Install SR Connect App</button>
+    <button onclick="installApp()" id="installBottomBtn" class="hidden w-full py-3 rounded-xl bg-slate-900 text-white text-xs font-bold">📱 Install SR Connect App</button>
   </div>
   <div class="mt-3">
     <button onclick="enableNotifications()" id="notificationBtn" class="w-full py-3 rounded-xl bg-white border text-slate-700 text-xs font-bold">🔔 Enable Job Card Notifications</button>
@@ -4557,7 +4557,7 @@ let rawItems=[];
 let selectedJob=null;
 let selectedWorkOrder=null;
 let timerInterval=null;
-window.deferredInstallPrompt = null;
+let deferredInstallPrompt=null;
 let jobFilter="All";
 let srDraftWorkOrderId = "";
 
@@ -6051,76 +6051,30 @@ function goBack(){
 
 
 
-
-/* =========================================================
-   PWA SERVICE WORKER
-   ========================================================= */
-
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/assets/sr_connect/sw.js", {
-            scope: "/"
-        }).catch(function (err) {
-            console.warn("SR Connect service worker registration failed:", err);
-        });
-    });
-}
-
 /* =========================================================
    INSTALL
    ========================================================= */
 
-window.addEventListener("beforeinstallprompt", function(e) {
-    e.preventDefault();
-    window.deferredInstallPrompt = e;
+window.addEventListener("beforeinstallprompt",e=>{
+  e.preventDefault();
+  deferredInstallPrompt=e;
 });
 
-window.addEventListener("appinstalled", function() {
-    window.deferredInstallPrompt = null;
+window.addEventListener("appinstalled",()=>{
+  deferredInstallPrompt=null;
 });
 
-async function installApp(event) {
+async function installApp(){
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt=null;
+    return;
+  }
 
-    if (event) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-    }
-
-    const promptEvent =
-        window.deferredInstallPrompt;
-
-    if (!promptEvent) {
-        alert(
-            "Chrome menu theke Install SR Connect select korun."
-        );
-        return false;
-    }
-
-    try {
-
-        promptEvent.prompt();
-
-        const choice =
-            await promptEvent.userChoice;
-
-        window.deferredInstallPrompt = null;
-
-        console.log(
-            "SR Connect install:",
-            choice && choice.outcome
-        );
-
-    } catch (err) {
-
-        console.error(
-            "SR Connect install error:",
-            err
-        );
-
-    }
-
-    return false;
+  alert("Browser menu থেকে Add to Home Screen / Install App দিন।");
 }
+
 
 /* =========================================================
    SR CONNECT QC INSPECTION UI V1
@@ -15313,6 +15267,18 @@ async function restorePage(){
 
 }
 
+
+/* =========================================================
+   SERVICE WORKER
+   ========================================================= */
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker
+      .register("/sw.js")
+      .catch(e=>console.error("SW:",e));
+  });
+}
 
 window.addEventListener("load",()=>{
   if(localStorage.getItem("sr_notifications_enabled")==="1" && "Notification" in window && Notification.permission==="granted") startNotificationPolling();

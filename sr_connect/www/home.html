@@ -5597,150 +5597,32 @@ function goBack(){
 
   /*
    * =========================================================
-   * SR STOCK ENTRY V3 FINAL NAVIGATION
+   * SR STOCK ENTRY V3 NAVIGATION
    *
-   * Detail -> Batch List
-   * Batch List -> Stock Entry
+   * Browser history is the source of truth.
+   *
+   * Detail -> Batches
+   * Batches -> Stock Entry
    * Stock Entry -> Manufacturing
-   *
-   * Do NOT use browser history here.
    * =========================================================
    */
 
-  if(currentView === "stockEntryDetailV3"){
-
-    const groupKey =
-      srSEV3 &&
-      srSEV3.group &&
-      srSEV3.group.group_key
-        ? srSEV3.group.group_key
-        : "";
-
-    if(
-      groupKey &&
-      typeof srSEV3OpenBatches === "function"
-    ){
-
-      srSEV3OpenBatches(
-        groupKey,
-        false
-      );
-
-    }else{
-
-      if(typeof srSEV3OpenHome === "function"){
-        srSEV3OpenHome(false);
-      }else{
-        showManufacturing();
-      }
-
-    }
-
-    return;
-  }
-
-  if(currentView === "stockEntryBatchesV3"){
-
-    if(typeof srSEV3OpenHome === "function"){
-
-      srSEV3OpenHome(false);
-
-    }else{
-
-      showManufacturing();
-
-    }
-
-    return;
-  }
-
-  if(currentView === "stockEntryHomeV3"){
-
-    showManufacturing();
-
-    return;
-  }
-
   /*
-   * SR FINAL:
-   * Never let Manufacturing / Work Order use
-   * browser history to decide their parent.
-   */
-
-  /*
-   * Work Order Detail -> Work Order List
-   */
-  if(currentView === "workOrder"){
-
-    currentDocType = "Work Order";
-    currentView = "list";
-
-    loadList(
-      "Work Order",
-      false
-    );
-
-    return;
-  }
-
-  /*
-   * Work Order List -> Manufacturing
-   */
-  if(
-    currentView === "list" &&
-    currentDocType === "Work Order"
-  ){
-
-    showManufacturing();
-
-    return;
-  }
-
-  /*
-   * Manufacturing -> Home
+   * Stock Entry V3:
    *
-   * Do NOT call history.back().
-   * Otherwise browser may jump to Administrator.
+   * Detail -> Batches
+   * Batches -> Stock Entry Home
+   * Stock Entry Home -> Manufacturing
+   *
+   * IMPORTANT:
+   * Stock Entry Home must NOT use browser history,
+   * otherwise it can fall outside SR Connect and land
+   * on the Frappe/Admin page.
    */
-  if(currentView === "manufacturing"){
 
-    showHome();
-
-    return;
-  }
-
-  /*
-   * SR FINISH:
-   * Work Order Batch flow:
-   * Work Order -> Batches -> Batch Detail
-   * Back must return one step at a time.
-   */
-  if(currentView === "batchJobs"){
-
-    if(typeof backFromBatchJobs === "function"){
-      backFromBatchJobs();
-    }else{
-      showManufacturing();
-    }
-
-    return;
-  }
-
-  /*
-   * SR FINISH:
-   * Stock Entry V3 has its own browser history.
-   * Detail -> List -> Manufacturing.
-   */
-  /*
-   * SR FINISH:
-   * Stock Entry V3 navigation:
-   * Home -> Batches -> Detail
-   * Back must move exactly one step at a time.
-   */
   if(
     currentView === "stockEntryDetailV3" ||
-    currentView === "stockEntryBatchesV3" ||
-    currentView === "stockEntryHomeV3"
+    currentView === "stockEntryBatchesV3"
   ){
 
     if(
@@ -5758,6 +5640,14 @@ function goBack(){
 
     return;
   }
+
+  if(currentView === "stockEntryHomeV3"){
+
+    showManufacturing();
+
+    return;
+  }
+
 
   if(currentView === "stockAlertSetting"){
     currentView="manufacturing";
@@ -10767,11 +10657,15 @@ async function srOpenStockBalanceMonth(month){
     document.getElementById("backBtn");
 
   if(back){
+
     back.onclick = function(){
+
       srOpenStockBalanceItem(
         srStockBalanceItem
       );
+
     };
+
   }
 
   try{
@@ -10780,19 +10674,19 @@ async function srOpenStockBalanceMonth(month){
       "/api/method/sr_connect.www.home.get_stock_balance_dates"
       + "?item_code="
       + encodeURIComponent(
-        srStockBalanceItem
-      )
+          srStockBalanceItem
+        )
       + "&month="
       + encodeURIComponent(
-        selectedMonth
-      )
+          selectedMonth
+        )
       + "&category="
       + encodeURIComponent(
-        srStockBalanceCategory
-      )
+          srStockBalanceCategory
+        )
     );
 
-    const rows =
+    let rows =
       Array.isArray(data?.rows)
         ? data.rows
         : [];
@@ -10805,230 +10699,738 @@ async function srOpenStockBalanceMonth(month){
         + "</div>";
 
       return;
+
     }
 
-    const formatDate = function(value){
+
+    /*
+     * ======================================================
+     * LOAD BATCH NO FROM ACTUAL STOCK LEDGER ENTRY
+     * ======================================================
+     */
+
+    try{
+
+      const sleNames =
+        [
+          ...new Set(
+            rows
+              .map(function(row){
+                return String(
+                  row.stock_ledger_entry || ""
+                ).trim();
+              })
+              .filter(Boolean)
+          )
+        ];
+
+      if(sleNames.length){
+
+        const batchResponse =
+          await api(
+            "/api/method/frappe.client.get_list",
+            {
+              method: "POST",
+
+              body:
+                JSON.stringify({
+                  doctype:
+                    "Stock Ledger Entry",
+
+                  fields: [
+                    "name",
+                    "batch_no"
+                  ],
+
+                  filters: [
+                    [
+                      "name",
+                      "in",
+                      sleNames
+                    ]
+                  ],
+
+                  limit_page_length: 5000
+                })
+            }
+          );
+
+        const sleRows =
+          Array.isArray(batchResponse)
+            ? batchResponse
+            : [];
+
+        const batchMap = {};
+
+        sleRows.forEach(function(row){
+
+          const name =
+            String(
+              row.name || ""
+            ).trim();
+
+          if(name){
+
+            batchMap[name] =
+              String(
+                row.batch_no || ""
+              ).trim();
+
+          }
+
+        });
+
+        rows =
+          rows.map(function(row){
+
+            const sle =
+              String(
+                row.stock_ledger_entry || ""
+              ).trim();
+
+            return Object.assign(
+              {},
+              row,
+              {
+                batch_no:
+                  String(
+                    row.batch_no ||
+                    batchMap[sle] ||
+                    ""
+                  ).trim()
+              }
+            );
+
+          });
+
+      }
+
+    }catch(batchError){
+
+      console.warn(
+        "Stock Balance Batch No load failed:",
+        batchError
+      );
+
+    }
+
+
+    function formatDate(value){
 
       if(!value){
         return "-";
       }
 
       const parts =
-        String(value).slice(0,10).split("-");
+        String(value)
+          .slice(0,10)
+          .split("-");
 
       if(parts.length !== 3){
         return String(value);
       }
-
-      const months = [
-        "January","February","March",
-        "April","May","June",
-        "July","August","September",
-        "October","November","December"
-      ];
 
       return (
         parts[2] +
         "/" +
         parts[1] +
         "/" +
-        parts[0]
+        parts[0].slice(-2)
       );
-    };
+
+    }
+
 
     box.innerHTML = `
-      <div class="bg-white border rounded-2xl
-                  overflow-y-auto overflow-x-hidden
-                  shadow-sm
-                  max-h-[calc(100vh-150px)]">
 
-        <table class="w-full table-fixed
-                      text-left border-collapse">
+      <div class="
+        bg-white
+        border
+        rounded-2xl
+        shadow-sm
+        overflow-hidden
+      ">
 
-          <colgroup>
-            <col style="width:18%">
-            <col style="width:23%">
-            <col style="width:12%">
-            <col style="width:11%">
-            <col style="width:12%">
-            <col style="width:14%">
-            <col style="width:10%">
-          </colgroup>
 
-          <thead class="sticky top-0 z-10">
+        <!-- FILTER BAR -->
 
-            <tr class="bg-slate-100 border-b
-                       text-[8px] font-bold
-                       text-slate-500 uppercase">
+        <div class="
+          p-3
+          border-b
+          bg-slate-50
+          sticky
+          top-0
+          z-30
+        ">
 
-              <th class="px-1.5 py-2 text-left">
-                Date
-              </th>
+          <div class="
+            grid
+            grid-cols-1
+            gap-2
+          ">
 
-              <th class="px-1.5 py-2 text-left">
-                Item Name
-              </th>
+            <div>
 
-              <th class="px-1.5 py-2 text-right">
-                Opening
-              </th>
+              <label class="
+                block
+                text-[9px]
+                font-bold
+                uppercase
+                text-slate-400
+                mb-1
+              ">
+                Batch No
+              </label>
 
-              <th class="px-1.5 py-2 text-right">
-                Inward
-              </th>
+              <input
+                id="srStockBalanceBatchSearch"
+                type="text"
+                autocomplete="off"
+                placeholder="Search Batch No..."
+                class="
+                  w-full
+                  border
+                  rounded-xl
+                  px-3
+                  py-2.5
+                  text-xs
+                  bg-white
+                  outline-none
+                "
+              >
 
-              <th class="px-1.5 py-2 text-right">
-                Outward
-              </th>
+            </div>
 
-              <th class="px-1.5 py-2 text-right">
-                Balance
-              </th>
 
-              <th class="px-1.5 py-2 text-right">
-                Unit
-              </th>
+            <div>
+
+              <label class="
+                block
+                text-[9px]
+                font-bold
+                uppercase
+                text-slate-400
+                mb-1
+              ">
+                View From Date
+              </label>
+
+              <input
+                id="srStockBalanceDateSearch"
+                type="date"
+                class="
+                  w-full
+                  border
+                  rounded-xl
+                  px-3
+                  py-2.5
+                  text-xs
+                  bg-white
+                  outline-none
+                "
+              >
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!--
+          HORIZONTAL SCROLL
+
+          Balance + Unit stay visible on the right.
+          Batch No is the LAST column.
+        -->
+
+        <div
+          id="srStockBalanceTableScroll"
+          class="
+            overflow-x-auto
+            overflow-y-auto
+            max-h-[calc(100vh-245px)]
+          "
+        >
+
+          <table
+            class="
+              min-w-[1050px]
+              w-full
+              text-left
+              border-collapse
+            "
+          >
+
+            <colgroup>
+
+              <col style="width:110px">
+              <col style="width:230px">
+              <col style="width:110px">
+              <col style="width:110px">
+              <col style="width:110px">
+              <col style="width:120px">
+              <col style="width:70px">
+              <col style="width:160px">
+
+            </colgroup>
+
+
+            <thead
+              class="
+                sticky
+                top-0
+                z-20
+              "
+            >
+
+              <tr class="
+                bg-slate-100
+                border-b
+                text-[8px]
+                font-bold
+                text-slate-500
+                uppercase
+              ">
+
+                <th class="px-2 py-2 text-left whitespace-nowrap">
+                  Date
+                </th>
+
+                <th class="px-2 py-2 text-left whitespace-nowrap">
+                  Item Name
+                </th>
+
+                <th class="px-2 py-2 text-right whitespace-nowrap">
+                  Opening
+                </th>
+
+                <th class="px-2 py-2 text-right whitespace-nowrap">
+                  Inward
+                </th>
+
+                <th class="px-2 py-2 text-right whitespace-nowrap">
+                  Outward
+                </th>
+
+
+                <!-- FIXED RIGHT -->
+
+                <th class="
+                  px-2
+                  py-2
+                  text-right
+                  whitespace-nowrap
+                  sticky
+                  right-[70px]
+                  bg-slate-100
+                  z-30
+                ">
+                  Balance
+                </th>
+
+                <th class="
+                  px-2
+                  py-2
+                  text-right
+                  whitespace-nowrap
+                  sticky
+                  right-0
+                  bg-slate-100
+                  z-30
+                ">
+                  Unit
+                </th>
+
+
+                <!-- LAST -->
+
+                <th class="
+                  px-2
+                  py-2
+                  text-left
+                  whitespace-nowrap
+                ">
+                  Batch No
+                </th>
+
+              </tr>
+
+            </thead>
+
+
+            <tbody id="srStockBalanceRows">
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    `;
+
+
+    const tableBody =
+      document.getElementById(
+        "srStockBalanceRows"
+      );
+
+    const batchInput =
+      document.getElementById(
+        "srStockBalanceBatchSearch"
+      );
+
+    const dateInput =
+      document.getElementById(
+        "srStockBalanceDateSearch"
+      );
+
+
+    function renderRows(){
+
+      const batchQuery =
+        String(
+          batchInput?.value || ""
+        )
+        .trim()
+        .toLowerCase();
+
+      const selectedDate =
+        String(
+          dateInput?.value || ""
+        ).trim();
+
+
+      /*
+       * Date filter means:
+       * selected date -> CURRENT DATE
+       *
+       * Example:
+       * 15/09/2026 selected
+       * => 15/09/2026 through today
+       */
+
+      const today =
+        new Date();
+
+      const todayText =
+        today.getFullYear() +
+        "-" +
+        String(
+          today.getMonth() + 1
+        ).padStart(2, "0") +
+        "-" +
+        String(
+          today.getDate()
+        ).padStart(2, "0");
+
+
+      const filtered =
+        rows.filter(function(row){
+
+          const batch =
+            String(
+              row.batch_no || ""
+            )
+            .trim()
+            .toLowerCase();
+
+          const rowDate =
+            String(
+              row.date || ""
+            )
+            .slice(0,10);
+
+
+          const dateMatches =
+            !selectedDate ||
+            (
+              rowDate >= selectedDate &&
+              rowDate <= todayText
+            );
+
+
+          return (
+            (!batchQuery ||
+              batch.includes(
+                batchQuery
+              ))
+            &&
+            dateMatches
+          );
+
+        });
+
+
+      if(!filtered.length){
+
+        tableBody.innerHTML = `
+
+          <tr>
+
+            <td
+              colspan="8"
+              class="
+                p-6
+                text-center
+                text-xs
+                text-slate-400
+              "
+            >
+              No matching stock records found.
+            </td>
+
+          </tr>
+
+        `;
+
+        return;
+
+      }
+
+
+      tableBody.innerHTML =
+        filtered.map(function(row){
+
+          const movement =
+            Number(
+              row.movement || 0
+            );
+
+          const inward =
+            movement > 0
+              ? movement
+              : 0;
+
+          const outward =
+            movement < 0
+              ? movement
+              : 0;
+
+
+          const batchNo =
+            String(
+              row.batch_no || "-"
+            ).trim();
+
+
+          return `
+
+            <tr
+              onclick="
+                srOpenStockBalanceTransaction(
+                  decodeURIComponent(
+                    '${encodeURIComponent(
+                      String(
+                        row.stock_ledger_entry || ""
+                      )
+                    )}'
+                  )
+                )
+              "
+              class="
+                border-b
+                last:border-b-0
+                text-[9px]
+                cursor-pointer
+                hover:bg-slate-50
+              "
+            >
+
+              <td class="
+                px-2
+                py-2
+                text-left
+                text-slate-600
+                whitespace-nowrap
+              ">
+                ${escapeHtml(
+                  formatDate(
+                    row.date
+                  )
+                )}
+              </td>
+
+
+              <td class="
+                px-2
+                py-2
+                text-left
+                font-medium
+                text-slate-800
+                whitespace-nowrap
+              ">
+                ${escapeHtml(
+                  row.item_name ||
+                  srStockBalanceItem ||
+                  "-"
+                )}
+              </td>
+
+
+              <td class="
+                px-2
+                py-2
+                text-right
+                text-slate-600
+                whitespace-nowrap
+              ">
+                ${escapeHtml(
+                  formatQty(
+                    row.opening_stock || 0
+                  )
+                )}
+              </td>
+
+
+              <td class="
+                px-2
+                py-2
+                text-right
+                font-semibold
+                text-green-600
+                whitespace-nowrap
+              ">
+                ${
+                  inward > 0
+                    ? "+" +
+                      escapeHtml(
+                        formatQty(
+                          inward
+                        )
+                      )
+                    : "-"
+                }
+              </td>
+
+
+              <td class="
+                px-2
+                py-2
+                text-right
+                font-semibold
+                text-red-600
+                whitespace-nowrap
+              ">
+                ${
+                  outward < 0
+                    ? escapeHtml(
+                        formatQty(
+                          outward
+                        )
+                      )
+                    : "-"
+                }
+              </td>
+
+
+              <!-- BALANCE ALWAYS VISIBLE -->
+
+              <td class="
+                px-2
+                py-2
+                text-right
+                font-bold
+                text-slate-900
+                whitespace-nowrap
+                sticky
+                right-[70px]
+                bg-white
+                z-10
+              ">
+                ${escapeHtml(
+                  formatQty(
+                    row.balance || 0
+                  )
+                )}
+              </td>
+
+
+              <!-- UNIT ALWAYS VISIBLE -->
+
+              <td class="
+                px-2
+                py-2
+                text-right
+                font-semibold
+                text-slate-500
+                whitespace-nowrap
+                sticky
+                right-0
+                bg-white
+                z-10
+              ">
+                ${escapeHtml(
+                  row.unit ||
+                  row.stock_uom ||
+                  data.stock_uom ||
+                  "-"
+                )}
+              </td>
+
+
+              <!-- BATCH LAST -->
+
+              <td class="
+                px-2
+                py-2
+                text-left
+                font-bold
+                text-blue-700
+                whitespace-nowrap
+              ">
+                ${escapeHtml(
+                  batchNo
+                )}
+              </td>
 
             </tr>
 
-          </thead>
+          `;
 
-          <tbody>
+        }).join("");
 
-            ${rows.map(row => {
+    }
 
-              const movement =
-                Number(row.movement || 0);
 
-              const inward =
-                movement > 0
-                  ? movement
-                  : 0;
+    if(batchInput){
 
-              const outward =
-                movement < 0
-                  ? movement
-                  : 0;
+      batchInput.addEventListener(
+        "input",
+        renderRows
+      );
 
-              return `
-                <tr
-                  onclick="srOpenStockBalanceTransaction(
-                    decodeURIComponent(
-                      '${encodeURIComponent(
-                        String(
-                          row.stock_ledger_entry || ""
-                        )
-                      )}'
-                    )
-                  )"
-                  class="border-b
-                         last:border-b-0
-                         text-[9px]
-                         cursor-pointer
-                         hover:bg-slate-50
-                         transition-colors">
+    }
 
-                  <td class="px-1.5 py-2
-                             text-left
-                             text-slate-600
-                             break-words">
-                    ${escapeHtml(
-                      formatDate(row.date)
-                    )}
-                  </td>
 
-                  <td class="px-1.5 py-2
-                             text-left
-                             font-medium
-                             text-slate-800
-                             break-words">
-                    ${escapeHtml(
-                      row.item_name ||
-                      srStockBalanceItem ||
-                      "-"
-                    )}
-                  </td>
+    if(dateInput){
 
-                  <td class="px-1.5 py-2
-                             text-right
-                             text-slate-600">
-                    ${escapeHtml(
-                      formatQty(
-                        row.opening_stock || 0
-                      )
-                    )}
-                  </td>
+      dateInput.addEventListener(
+        "change",
+        renderRows
+      );
 
-                  <td class="px-1.5 py-2
-                             text-right
-                             font-semibold
-                             text-green-600">
-                    ${inward > 0
-                      ? "+" +
-                        escapeHtml(
-                          formatQty(inward)
-                        )
-                      : "-"}
-                  </td>
+    }
 
-                  <td class="px-1.5 py-2
-                             text-right
-                             font-semibold
-                             text-red-600">
-                    ${outward < 0
-                      ? escapeHtml(
-                          formatQty(outward)
-                        )
-                      : "-"}
-                  </td>
 
-                  <td class="px-1.5 py-2
-                             text-right
-                             font-bold
-                             text-slate-900">
-                    ${escapeHtml(
-                      formatQty(
-                        row.balance || 0
-                      )
-                    )}
-                  </td>
-
-                  <td class="px-1.5 py-2
-                             text-right
-                             font-semibold
-                             text-slate-500">
-                    ${escapeHtml(
-                      row.unit ||
-                      row.stock_uom ||
-                      data.stock_uom ||
-                      "-"
-                    )}
-                  </td>
-
-                </tr>
-              `;
-
-            }).join("")}
-
-          </tbody>
-
-        </table>
-
-      </div>
-    `;
+    renderRows();
 
   }catch(e){
 
     box.innerHTML =
       "<div class='text-center py-10 text-xs text-rose-500'>"
       + escapeHtml(
-        e.message ||
-        "Failed to load date-wise stock."
-      )
+          e.message ||
+          "Failed to load date-wise stock."
+        )
       + "</div>";
 
   }
+
 }
+
 
 async function loadList(type, restoring=false){
 
@@ -19598,16 +20000,46 @@ function srSEV3Push(
   data={}
 ){
 
+  /*
+   * SR STOCK ENTRY V3
+   * Keep every screen as its own browser-history entry.
+   *
+   * Manufacturing
+   *   -> Stock Entry Home
+   *      -> Batches
+   *         -> Detail
+   *
+   * Browser Back must therefore remove only ONE level.
+   */
+
+  const current =
+    history.state;
+
+  const state = {
+    srStockEntryV3: true,
+
+    screen: screen,
+
+    parent:
+      current &&
+      current.srStockEntryV3
+        ? {
+            screen:
+              current.screen || "",
+            tab:
+              current.tab || "",
+            group:
+              current.group || "",
+            work_order:
+              current.work_order || ""
+          }
+        : null,
+
+    ...data
+  };
+
   history.pushState(
-    {
-      srStockEntryV3:
-        true,
-
-      screen:
-        screen,
-
-      ...data
-    },
+    state,
     "",
     window.location.pathname
   );
@@ -20032,6 +20464,8 @@ async function srSEV3OpenBatches(
       ? group.batches
       : [];
 
+  await srSEV3LoadBatchDates();
+
   srSEV3.selectedBatch =
     {};
 
@@ -20194,152 +20628,482 @@ async function srSEV3OpenBatches(
 }
 
 
+
+async function srSEV3LoadBatchDates(){
+
+  const batches =
+    Array.isArray(srSEV3.batches)
+      ? srSEV3.batches
+      : [];
+
+  const workOrders =
+    [...new Set(
+      batches
+        .map(function(batch){
+          return String(batch.work_order || "").trim();
+        })
+        .filter(Boolean)
+    )];
+
+  if(!workOrders.length){
+    return;
+  }
+
+  try{
+
+    const response = await fetch(
+      "/api/method/frappe.client.get_list",
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Frappe-CSRF-Token": "{{ csrf_token }}"
+        },
+        body: JSON.stringify({
+          doctype: "Work Order",
+          fields: [
+            "name",
+            "planned_start_date"
+          ],
+          filters: [
+            [
+              "name",
+              "in",
+              workOrders
+            ]
+          ],
+          limit_page_length: 5000
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    const rows =
+      Array.isArray(data.message)
+        ? data.message
+        : [];
+
+    const dateMap = {};
+
+    rows.forEach(function(row){
+
+      const name =
+        String(row.name || "").trim();
+
+      const date =
+        String(row.planned_start_date || "").trim();
+
+      if(name){
+        dateMap[name] = date;
+      }
+
+    });
+
+    srSEV3.batches =
+      batches.map(function(batch){
+
+        const wo =
+          String(batch.work_order || "").trim();
+
+        return Object.assign({}, batch, {
+          sr_work_order_date:
+            dateMap[wo] || ""
+        });
+
+      });
+
+  }catch(error){
+
+    console.error(
+      "SR V3 batch date load failed:",
+      error
+    );
+
+  }
+
+}
+
 function srSEV3RenderBatchCards(){
 
-  return srSEV3.batches
-    .map(
-      function(batch){
+  const batches =
+    Array.isArray(srSEV3.batches)
+      ? srSEV3.batches
+      : [];
 
-        const checked =
-          Boolean(
-            srSEV3.selectedBatch[
-              batch.work_order
-            ]
-          );
+  /*
+   * Same date = SAME date card.
+   */
+  const groups = {};
 
-        return `
+  batches.forEach(function(batch){
+
+    const rawDate =
+      String(
+        batch.sr_work_order_date || ""
+      ).trim();
+
+    const dateKey =
+      rawDate
+        ? rawDate.substring(0, 10)
+        : "__NO_DATE__";
+
+    if(!groups[dateKey]){
+      groups[dateKey] = [];
+    }
+
+    groups[dateKey].push(batch);
+
+  });
+
+  const dates =
+    Object.keys(groups).sort(function(a,b){
+
+      if(a === "__NO_DATE__"){
+        return 1;
+      }
+
+      if(b === "__NO_DATE__"){
+        return -1;
+      }
+
+      return a.localeCompare(b);
+
+    });
+
+  /*
+   * Expanded date is kept globally so
+   * re-render does not lose the opened date.
+   */
+  if(
+    typeof window.srSEV3ExpandedDate === "undefined"
+  ){
+    window.srSEV3ExpandedDate = null;
+  }
+
+  function getDateTime(value){
+
+    if(
+      !value ||
+      value === "__NO_DATE__"
+    ){
+      return {
+        date: "DATE NOT SET",
+        time: "--:--:--"
+      };
+    }
+
+    const raw =
+      String(value).trim();
+
+    const match =
+      raw.match(
+        /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/
+      );
+
+    if(!match){
+      return {
+        date: raw,
+        time: "--:--:--"
+      };
+    }
+
+    return {
+      date:
+        String(match[3]).padStart(2, "0") + "/" +
+        String(match[2]).padStart(2, "0") + "/" +
+        String(match[1]).slice(-2),
+
+      time:
+        match[4]
+          ? match[4] + ":" +
+            match[5] + ":" +
+            (match[6] || "00")
+          : "--:--:--"
+    };
+
+  }
+
+  function renderBatch(batch){
+
+    const checked =
+      Boolean(
+        srSEV3.selectedBatch[
+          batch.work_order
+        ]
+      );
+
+    return `
+
+      <div class="
+        border
+        rounded-xl
+        p-3
+        bg-white
+        mb-2
+      ">
+
+        <div class="
+          flex
+          items-center
+          gap-3
+        ">
+
+          ${
+            srSEV3.tab === "not_started"
+              ? `
+                <input
+                  type="checkbox"
+                  class="w-5 h-5 shrink-0"
+                  ${
+                    checked
+                      ? "checked"
+                      : ""
+                  }
+                  onclick="
+                    event.stopPropagation();
+                    srSEV3ToggleBatch(
+                      '${escapeAttr(
+                        batch.work_order
+                      )}',
+                      this.checked
+                    );
+                  "
+                >
+              `
+              : `
+                <div class="
+                  w-5 h-5
+                  rounded-full
+                  bg-amber-100
+                  text-amber-700
+                  flex
+                  items-center
+                  justify-center
+                  text-[9px]
+                  font-bold
+                  shrink-0
+                ">
+                  ✓
+                </div>
+              `
+          }
 
           <div
             class="
-              border
-              rounded-xl
-              p-3
-              mb-2
-              bg-white
+              flex-1
+              cursor-pointer
+            "
+            onclick="
+              srSEV3OpenDetail(
+                '${escapeAttr(
+                  batch.work_order
+                )}'
+              )
             "
           >
 
             <div class="
-              flex
-              items-center
-              gap-3
+              text-[10px]
+              text-slate-400
+              uppercase
             ">
+              Batch
+            </div>
 
-              ${
-                srSEV3.tab === "not_started"
-                  ? `
-                    <input
-                      type="checkbox"
-                      class="w-5 h-5 shrink-0"
-                      ${
-                        checked
-                          ? "checked"
-                          : ""
-                      }
-                      onclick="
-                        event.stopPropagation();
-                        srSEV3ToggleBatch(
-                          '${escapeAttr(
-                            batch.work_order
-                          )}',
-                          this.checked
-                        );
-                      "
-                    >
-                  `
-                  : `
-                    <div class="
-                      w-5 h-5
-                      rounded-full
-                      bg-amber-100
-                      text-amber-700
-                      flex
-                      items-center
-                      justify-center
-                      text-[9px]
-                      font-bold
-                      shrink-0
-                    ">
-                      ✓
-                    </div>
-                  `
-              }
+            <div class="
+              font-bold
+              text-sm
+              mt-0.5
+            ">
+              ${escapeHtml(
+                batch.batch_no || "-"
+              )}
+            </div>
 
-              <div
-                class="
-                  flex-1
-                  cursor-pointer
-                "
-                onclick="
-                  srSEV3OpenDetail(
-                    '${escapeAttr(
-                      batch.work_order
-                    )}'
-                  )
-                "
-              >
-
-                <div class="
-                  text-[10px]
-                  text-slate-400
-                  uppercase
-                ">
-                  Batch
-                </div>
-
-                <div class="
-                  font-bold
-                  text-sm
-                  mt-0.5
-                ">
-                  ${escapeHtml(
-                    batch.batch_no ||
-                    "-"
-                  )}
-                </div>
-
-                <div class="
-                  text-[10px]
-                  text-slate-500
-                  mt-1
-                ">
-                  Work Order:
-                  ${escapeHtml(
-                    batch.work_order ||
-                    "-"
-                  )}
-                </div>
-
-              </div>
-
-              <div
-                class="
-                  text-[10px]
-                  font-bold
-                  text-teal-600
-                  cursor-pointer
-                "
-                onclick="
-                  event.stopPropagation();
-                  srSEV3OpenDetail(
-                    '${escapeAttr(
-                      batch.work_order
-                    )}'
-                  );
-                "
-              >
-                OPEN →
-              </div>
-
+            <div class="
+              text-[10px]
+              text-slate-500
+              mt-1
+            ">
+              Work Order:
+              ${escapeHtml(
+                batch.work_order || "-"
+              )}
             </div>
 
           </div>
 
-        `;
+          <div
+            class="
+              text-[10px]
+              font-bold
+              text-teal-600
+              cursor-pointer
+              shrink-0
+            "
+            onclick="
+              event.stopPropagation();
+              srSEV3OpenDetail(
+                '${escapeAttr(
+                  batch.work_order
+                )}'
+              );
+            "
+          >
+            OPEN →
+          </div>
 
-      }
-    )
-    .join("");
+        </div>
+
+      </div>
+
+    `;
+
+  }
+
+  return dates.map(function(dateKey){
+
+    const dateBatches =
+      groups[dateKey];
+
+    const firstBatch =
+      dateBatches[0] || {};
+
+    const dateTime =
+      getDateTime(
+        firstBatch.sr_work_order_date ||
+        dateKey
+      );
+
+    const isOpen =
+      window.srSEV3ExpandedDate === dateKey;
+
+    return `
+
+      <div class="
+        border
+        border-slate-200
+        rounded-2xl
+        bg-white
+        mb-3
+        overflow-hidden
+      ">
+
+        <!-- DATE ONLY CARD -->
+
+        <div
+          class="
+            flex
+            items-center
+            w-full
+            px-4
+            py-4
+            cursor-pointer
+            select-none
+          "
+          onclick="
+            window.srSEV3ExpandedDate =
+              ${
+                isOpen
+                  ? "null"
+                  : "'" + escapeAttr(dateKey) + "'"
+              };
+
+            const box =
+              document.getElementById(
+                'srSEV3BatchCards'
+              );
+
+            if(box){
+              box.innerHTML =
+                srSEV3RenderBatchCards();
+            }
+          "
+        >
+
+          <!-- DATE LEFT -->
+
+          <div class="
+            text-base
+            font-bold
+            text-slate-800
+          ">
+            ${escapeHtml(
+              dateTime.date
+            )}
+          </div>
+
+          <!-- TIME RIGHT -->
+
+          <div class="
+            ml-auto
+            text-sm
+            font-semibold
+            text-slate-500
+            whitespace-nowrap
+            text-right
+          ">
+            ${escapeHtml(
+              dateTime.time
+            )}
+          </div>
+
+          <!-- COUNT -->
+
+          <div class="
+            ml-3
+            px-2
+            py-1
+            rounded-full
+            bg-slate-100
+            text-[9px]
+            font-bold
+            text-slate-500
+            whitespace-nowrap
+          ">
+            ${dateBatches.length}
+            BATCH${dateBatches.length === 1 ? "" : "ES"}
+          </div>
+
+          <!-- ARROW -->
+
+          <div class="
+            ml-3
+            text-slate-400
+            text-xs
+          ">
+            ${isOpen ? "▲" : "▼"}
+          </div>
+
+        </div>
+
+        ${
+          isOpen
+            ? `
+              <div class="
+                border-t
+                border-slate-200
+                bg-slate-50
+                p-3
+              ">
+
+                ${dateBatches
+                  .map(renderBatch)
+                  .join("")
+                }
+
+              </div>
+            `
+            : ""
+        }
+
+      </div>
+
+    `;
+
+  }).join("");
 
 }
 
@@ -26340,6 +27104,20 @@ async function srSEV3SubmitMulti(){
       "Stock Entry submitted successfully."
     );
 
+    // Return to SR Connect NOT STARTED batch list.
+    srSEV3.tab = "not_started";
+    srSEV3.group = null;
+    srSEV3.batches = [];
+    srSEV3.selectedBatch = {};
+
+    await srSEV3OpenHome(false);
+
+    // Force the Stock Entry V3 view after submit.
+    setTimeout(function(){
+      srSEV3.tab = "not_started";
+      srSEV3OpenHome(false);
+    }, 100);
+
   }catch(e){
 
     console.error(
@@ -27138,6 +27916,1911 @@ window.srOpenStockBalanceWithPermission = async function(){
 
 };
 </script>
+
+
+<script>
+/* SR AUTO REMAINING QTY V14 */
+/* SR CSRF FIX V16 */
+/* SR CSRF COOKIE FIX V17 */
+/* SR SUBMIT FETCH FIX V15 */
+/* SR SINGLE WORK ORDER TRANSFER QTY V13 */
+
+(function(){
+
+  "use strict";
+
+  if(window.srSingleWorkOrderTransferQtyV13){
+    return;
+  }
+
+  window.srSingleWorkOrderTransferQtyV13 = true;
+
+
+  function getState(){
+
+    try{
+
+      if(
+        typeof srSEV3 !== "undefined" &&
+        srSEV3
+      ){
+
+        return srSEV3;
+
+      }
+
+    }catch(e){}
+
+    return window.srSEV3 || null;
+
+  }
+
+
+  function getDetail(){
+
+    var state = getState();
+
+    if(
+      state &&
+      state.detail
+    ){
+
+      return state.detail;
+
+    }
+
+    return null;
+
+  }
+
+
+  function isBatchItem(row){
+
+    return !!(
+      row &&
+      (
+        row.has_batch_no === 1 ||
+        row.has_batch_no === true ||
+        String(row.has_batch_no || "").toLowerCase() === "1" ||
+        String(row.has_batch_no || "").toLowerCase() === "true"
+      )
+    );
+
+  }
+
+
+  function requiredQty(row){
+
+    if(!row){
+      return 0;
+    }
+
+    var value = row.remaining_qty;
+
+    if(
+      value === undefined ||
+      value === null
+    ){
+
+      value = row.required_qty;
+
+    }
+
+    var result =
+      Number(value || 0);
+
+    return Number.isFinite(result)
+      ? result
+      : 0;
+
+  }
+
+
+  function getWarehouse(card,row){
+
+    var selector =
+      card.querySelector(
+        '[data-sr-role="warehouse"]'
+      );
+
+    if(selector){
+
+      return String(
+        selector.value || ""
+      ).trim();
+
+    }
+
+    return String(
+      row.source_warehouse || ""
+    ).trim();
+
+  }
+
+
+  function getBatches(row,warehouse){
+
+    var options =
+      Array.isArray(
+        row.warehouse_options
+      )
+        ? row.warehouse_options
+        : [];
+
+    for(
+      var i = 0;
+      i < options.length;
+      i++
+    ){
+
+      var wh =
+        options[i] || {};
+
+      if(
+        String(
+          wh.warehouse || ""
+        ).trim() ===
+        String(
+          warehouse || ""
+        ).trim()
+      ){
+
+        return Array.isArray(
+          wh.batches
+        )
+          ? wh.batches
+          : [];
+
+      }
+
+    }
+
+    return Array.isArray(row.batches)
+      ? row.batches
+      : [];
+
+  }
+
+
+  function buildBatchSelect(
+    row,
+    warehouse
+  ){
+
+    var select =
+      document.createElement(
+        "select"
+      );
+
+    select.className =
+      "w-full border rounded-xl p-3 text-xs bg-white";
+
+    select.setAttribute(
+      "data-sr-v13-batch",
+      "1"
+    );
+
+
+    var empty =
+      document.createElement(
+        "option"
+      );
+
+    empty.value = "";
+    empty.textContent =
+      "Select Batch";
+
+    select.appendChild(
+      empty
+    );
+
+
+    getBatches(
+      row,
+      warehouse
+    ).forEach(
+      function(batch){
+
+        var option =
+          document.createElement(
+            "option"
+          );
+
+        var batchNo =
+          String(
+            batch.batch_no ||
+            batch.name ||
+            batch.batch ||
+            ""
+          ).trim();
+
+        var available =
+          Number(
+            batch.available_qty ??
+            batch.qty ??
+            batch.actual_qty ??
+            batch.stock_qty ??
+            0
+          );
+
+        option.value =
+          batchNo;
+
+        option.textContent =
+          batchNo +
+          " — " +
+          (
+            Number.isFinite(
+              available
+            )
+              ? available
+              : 0
+          ) +
+          " " +
+          String(
+            row.stock_uom ||
+            row.uom ||
+            ""
+          );
+
+        option.setAttribute(
+          "data-available",
+          String(
+            Number.isFinite(
+              available
+            )
+              ? available
+              : 0
+          )
+        );
+
+        select.appendChild(
+          option
+        );
+
+      }
+    );
+
+
+    return select;
+
+  }
+
+
+  function allocationRows(card){
+
+    return Array.prototype.slice.call(
+      card.querySelectorAll(
+        '[data-sr-v13-row="1"]'
+      )
+    );
+
+  }
+
+
+  function readAllocations(card){
+
+    return allocationRows(
+      card
+    ).map(
+      function(row){
+
+        var batch =
+          row.querySelector(
+            '[data-sr-v13-batch="1"]'
+          );
+
+        var qty =
+          row.querySelector(
+            '[data-sr-v13-qty="1"]'
+          );
+
+        return {
+
+          batch_no:
+            batch
+              ? String(
+                  batch.value || ""
+                ).trim()
+              : "",
+
+          qty:
+            qty
+              ? Number(
+                  qty.value || 0
+                )
+              : 0
+
+        };
+
+      }
+    );
+
+  }
+
+
+  function updateTotal(card){
+
+    if(!card){
+      return;
+    }
+
+    var area =
+      card.querySelector(
+        '[data-sr-v13-area="1"]'
+      );
+
+    if(!area){
+      return;
+    }
+
+    var required =
+      Number(
+        area.getAttribute(
+          "data-required"
+        ) || 0
+      );
+
+    var total = 0;
+
+    readAllocations(
+      card
+    ).forEach(
+      function(item){
+
+        if(
+          Number.isFinite(
+            item.qty
+          )
+        ){
+
+          total +=
+            item.qty;
+
+        }
+
+      }
+    );
+
+
+    var totalBox =
+      area.querySelector(
+        '[data-sr-v13-total="1"]'
+      );
+
+    if(!totalBox){
+      return;
+    }
+
+    var uom =
+      area.getAttribute(
+        "data-uom"
+      ) || "";
+
+
+    totalBox.textContent =
+      "TOTAL TRANSFER: " +
+      total +
+      " / " +
+      required +
+      (
+        uom
+          ? " " + uom
+          : ""
+      );
+
+
+    if(
+      Math.abs(
+        total - required
+      ) < 0.0000001
+    ){
+
+      totalBox.style.color =
+        "#047857";
+
+    }else if(
+      total > required
+    ){
+
+      totalBox.style.color =
+        "#b91c1c";
+
+    }else{
+
+      totalBox.style.color =
+        "#334155";
+
+    }
+
+  }
+
+
+  function makeRow(
+    card,
+    item,
+    warehouse,
+    removable
+  ){
+
+    var row =
+      document.createElement(
+        "div"
+      );
+
+    row.setAttribute(
+      "data-sr-v13-row",
+      "1"
+    );
+
+    row.style.cssText =
+      "display:grid;" +
+      "grid-template-columns:" +
+      (
+        isBatchItem(item)
+          ? "minmax(160px,1fr) 130px 34px"
+          : "1fr"
+      ) +
+      ";" +
+      "gap:8px;" +
+      "align-items:end;" +
+      "margin-top:8px;";
+
+
+    if(
+      isBatchItem(item)
+    ){
+
+      var batchBox =
+        document.createElement(
+          "div"
+        );
+
+
+      var batchLabel =
+        document.createElement(
+          "div"
+        );
+
+      batchLabel.textContent =
+        "SELECT BATCH";
+
+      batchLabel.style.cssText =
+        "font-size:9px;" +
+        "font-weight:700;" +
+        "color:#64748b;" +
+        "margin-bottom:5px;";
+
+
+      var batchSelect =
+        buildBatchSelect(
+          item,
+          warehouse
+        );
+
+
+      batchBox.appendChild(
+        batchLabel
+      );
+
+      batchBox.appendChild(
+        batchSelect
+      );
+
+      row.appendChild(
+        batchBox
+      );
+
+    }
+
+
+    var qtyBox =
+      document.createElement(
+        "div"
+      );
+
+
+    var qtyLabel =
+      document.createElement(
+        "div"
+      );
+
+    qtyLabel.textContent =
+      "TRANSFER QTY";
+
+    qtyLabel.style.cssText =
+      "font-size:9px;" +
+      "font-weight:700;" +
+      "color:#64748b;" +
+      "margin-bottom:5px;";
+
+
+    var qty =
+      document.createElement(
+        "input"
+      );
+
+    qty.type =
+      "number";
+
+    qty.min =
+      "0";
+
+    qty.step =
+      "any";
+
+    /*
+     * Start with the complete Required Qty.
+     * Example: Required = 333 -> Transfer Qty = 333.
+     */
+    qty.value =
+      String(
+        requiredQty(item)
+      );
+
+    qty.placeholder =
+      "Enter transfer qty";
+
+    qty.className =
+      "w-full border rounded-xl p-3 text-xs bg-white";
+
+    qty.setAttribute(
+      "data-sr-v13-qty",
+      "1"
+    );
+
+
+    qtyBox.appendChild(
+      qtyLabel
+    );
+
+    qtyBox.appendChild(
+      qty
+    );
+
+    row.appendChild(
+      qtyBox
+    );
+
+
+    if(
+      isBatchItem(item)
+    ){
+
+      var action =
+        document.createElement(
+          "div"
+        );
+
+
+      if(removable){
+
+        var remove =
+          document.createElement(
+            "button"
+          );
+
+        remove.type =
+          "button";
+
+        remove.textContent =
+          "×";
+
+        remove.title =
+          "Remove batch";
+
+        remove.className =
+          "w-full px-2 py-2 rounded-lg border text-sm font-bold";
+
+
+        remove.onclick =
+          function(){
+
+            row.remove();
+
+            updateTotal(
+              card
+            );
+
+          };
+
+
+        action.appendChild(
+          remove
+        );
+
+      }
+
+
+      row.appendChild(
+        action
+      );
+
+    }
+
+
+    qty.addEventListener(
+      "input",
+      function(){
+
+        updateTotal(
+          card
+        );
+
+      }
+    );
+
+
+    var batchInput =
+      row.querySelector(
+        '[data-sr-v13-batch="1"]'
+      );
+
+
+    if(batchInput){
+
+      batchInput.addEventListener(
+        "change",
+        function(){
+
+          updateTotal(
+            card
+          );
+
+        }
+      );
+
+    }
+
+
+    return row;
+
+  }
+
+
+  function installCard(
+    card,
+    item
+  ){
+
+    if(
+      !card ||
+      !item
+    ){
+
+      return;
+
+    }
+
+
+    if(
+      card.getAttribute(
+        "data-sr-v13-installed"
+      ) === "1"
+    ){
+
+      return;
+
+    }
+
+
+    card.setAttribute(
+      "data-sr-v13-installed",
+      "1"
+    );
+
+
+    var warehouse =
+      getWarehouse(
+        card,
+        item
+      );
+
+
+    var oldBatch =
+      card.querySelector(
+        '[data-sr-role="batch"]'
+      );
+
+
+    var oldBatchParent =
+      oldBatch
+        ? oldBatch.parentElement
+        : null;
+
+
+    if(oldBatchParent){
+
+      oldBatchParent.style.display =
+        "none";
+
+    }
+
+
+    var required =
+      requiredQty(
+        item
+      );
+
+
+    var uom =
+      String(
+        item.stock_uom ||
+        item.uom ||
+        ""
+      );
+
+
+    var area =
+      document.createElement(
+        "div"
+      );
+
+    area.setAttribute(
+      "data-sr-v13-area",
+      "1"
+    );
+
+    area.setAttribute(
+      "data-required",
+      String(required)
+    );
+
+    area.setAttribute(
+      "data-uom",
+      uom
+    );
+
+    area.style.cssText =
+      "margin-top:12px;" +
+      "padding:12px;" +
+      "border:1px solid #dbe2ea;" +
+      "border-radius:12px;" +
+      "background:#fff;";
+
+
+    var title =
+      document.createElement(
+        "div"
+      );
+
+    title.textContent =
+      "TRANSFER ALLOCATION";
+
+    title.style.cssText =
+      "font-size:13px;" +
+      "font-weight:800;" +
+      "margin-bottom:4px;";
+
+
+    var requiredText =
+      document.createElement(
+        "div"
+      );
+
+    requiredText.textContent =
+      "REQUIRED QTY: " +
+      required +
+      (
+        uom
+          ? " " + uom
+          : ""
+      );
+
+    requiredText.style.cssText =
+      "font-size:10px;" +
+      "font-weight:700;" +
+      "color:#64748b;" +
+      "margin-bottom:8px;";
+
+
+    var list =
+      document.createElement(
+        "div"
+      );
+
+    list.setAttribute(
+      "data-sr-v13-list",
+      "1"
+    );
+
+
+    list.appendChild(
+      makeRow(
+        card,
+        item,
+        warehouse,
+        false
+      )
+    );
+
+
+    var add =
+      document.createElement(
+        "button"
+      );
+
+    add.type =
+      "button";
+
+    add.textContent =
+      "+ Add Batch";
+
+    add.className =
+      "mt-2 px-3 py-2 rounded-lg border text-xs font-bold bg-white";
+
+
+    if(
+      !isBatchItem(item)
+    ){
+
+      add.style.display =
+        "none";
+
+    }
+
+
+    add.onclick =
+      function(){
+
+        var used = 0;
+
+        readAllocations(
+          card
+        ).forEach(
+          function(allocation){
+
+            var value =
+              Number(
+                allocation.qty || 0
+              );
+
+            if(
+              Number.isFinite(value) &&
+              value > 0
+            ){
+
+              used += value;
+
+            }
+
+          }
+        );
+
+        var remaining =
+          Math.max(
+            0,
+            requiredQty(item) - used
+          );
+
+        var nextRow =
+          makeRow(
+            card,
+            item,
+            warehouse,
+            true
+          );
+
+        var nextQty =
+          nextRow.querySelector(
+            '[data-sr-v13-qty="1"]'
+          );
+
+        if(nextQty){
+
+          nextQty.value =
+            String(
+              remaining
+            );
+
+        }
+
+        list.appendChild(
+          nextRow
+        );
+
+        updateTotal(
+          card
+        );
+
+      };
+
+
+    var total =
+      document.createElement(
+        "div"
+      );
+
+    total.setAttribute(
+      "data-sr-v13-total",
+      "1"
+    );
+
+    total.style.cssText =
+      "margin-top:9px;" +
+      "font-size:12px;" +
+      "font-weight:800;";
+
+
+    area.appendChild(
+      title
+    );
+
+    area.appendChild(
+      requiredText
+    );
+
+    area.appendChild(
+      list
+    );
+
+    area.appendChild(
+      add
+    );
+
+    area.appendChild(
+      total
+    );
+
+
+    if(oldBatchParent){
+
+      oldBatchParent.insertAdjacentElement(
+        "afterend",
+        area
+      );
+
+    }else{
+
+      card.appendChild(
+        area
+      );
+
+    }
+
+
+    if(warehouse){
+
+      var warehouseSelector =
+        card.querySelector(
+          '[data-sr-role="warehouse"]'
+        );
+
+      if(warehouseSelector){
+
+        warehouseSelector.addEventListener(
+          "change",
+          function(){
+
+            var newWarehouse =
+              String(
+                warehouseSelector.value ||
+                ""
+              ).trim();
+
+            var batchInputs =
+              card.querySelectorAll(
+                '[data-sr-v13-batch="1"]'
+              );
+
+            Array.prototype.forEach.call(
+              batchInputs,
+              function(select){
+
+                var oldValue =
+                  select.value;
+
+                var replacement =
+                  buildBatchSelect(
+                    item,
+                    newWarehouse
+                  );
+
+                replacement.value =
+                  oldValue;
+
+                select.parentNode.replaceChild(
+                  replacement,
+                  select
+                );
+
+                replacement.addEventListener(
+                  "change",
+                  function(){
+
+                    updateTotal(
+                      card
+                    );
+
+                  }
+                );
+
+              }
+            );
+
+          }
+        );
+
+      }
+
+    }
+
+
+    updateTotal(
+      card
+    );
+
+  }
+
+
+  function install(){
+
+    var detail =
+      getDetail();
+
+    if(
+      !detail ||
+      !Array.isArray(
+        detail.materials
+      )
+    ){
+
+      return;
+
+    }
+
+
+    var cards =
+      document.querySelectorAll(
+        '[data-sr-material-card="1"]'
+      );
+
+
+    var items =
+      detail.materials;
+
+
+    Array.prototype.forEach.call(
+      cards,
+      function(card,index){
+
+        if(
+          items[index]
+        ){
+
+          installCard(
+            card,
+            items[index]
+          );
+
+        }
+
+      }
+    );
+
+
+    installSubmit();
+
+  }
+
+
+  function installSubmit(){
+
+    if(
+      document.getElementById(
+        "srV13SaveSubmit"
+      )
+    ){
+
+      return;
+
+    }
+
+
+    var cards =
+      document.querySelectorAll(
+        '[data-sr-material-card="1"]'
+      );
+
+
+    if(!cards.length){
+
+      return;
+
+    }
+
+
+    var old =
+      document.getElementById(
+        "srSEV3SubmitButton"
+      );
+
+
+    if(old){
+
+      old.style.display =
+        "none";
+
+    }
+
+
+    var wrap =
+      document.createElement(
+        "div"
+      );
+
+    wrap.style.cssText =
+      "margin-top:16px;" +
+      "padding-bottom:28px;";
+
+
+    var button =
+      document.createElement(
+        "button"
+      );
+
+    button.type =
+      "button";
+
+    button.id =
+      "srV13SaveSubmit";
+
+    button.textContent =
+      "SAVE & SUBMIT";
+
+    button.className =
+      "w-full bg-slate-900 text-white font-bold py-3 rounded-xl";
+
+
+    button.onclick =
+      submit;
+
+
+    wrap.appendChild(
+      button
+    );
+
+
+    cards[
+      cards.length - 1
+    ].parentElement.appendChild(
+      wrap
+    );
+
+  }
+
+
+  function validate(){
+
+    var detail =
+      getDetail();
+
+
+    if(
+      !detail ||
+      !detail.work_order
+    ){
+
+      return {
+        ok:false,
+        message:
+          "Work Order not found."
+      };
+
+    }
+
+
+    var cards =
+      document.querySelectorAll(
+        '[data-sr-material-card="1"]'
+      );
+
+
+    var items =
+      detail.materials || [];
+
+
+    if(
+      cards.length <
+      items.length
+    ){
+
+      return {
+        ok:false,
+        message:
+          "Material cards are not ready yet."
+      };
+
+    }
+
+
+    var result = [];
+
+
+    for(
+      var i = 0;
+      i < items.length;
+      i++
+    ){
+
+      var item =
+        items[i];
+
+      var card =
+        cards[i];
+
+
+      var warehouse =
+        getWarehouse(
+          card,
+          item
+        );
+
+
+      if(!warehouse){
+
+        return {
+          ok:false,
+          message:
+            "Select warehouse for " +
+            (
+              item.item_name ||
+              item.item_code
+            )
+        };
+
+      }
+
+
+      var required =
+        requiredQty(
+          item
+        );
+
+
+      var allocations =
+        readAllocations(
+          card
+        );
+
+
+      var total = 0;
+
+      var batches = {};
+
+
+      for(
+        var j = 0;
+        j < allocations.length;
+        j++
+      ){
+
+        var a =
+          allocations[j];
+
+
+        var qty =
+          Number(
+            a.qty || 0
+          );
+
+
+        if(
+          !Number.isFinite(qty) ||
+          qty <= 0
+        ){
+
+          return {
+            ok:false,
+            message:
+              "Enter TRANSFER QTY for " +
+              (
+                item.item_name ||
+                item.item_code
+              )
+          };
+
+        }
+
+
+        total +=
+          qty;
+
+
+        if(
+          isBatchItem(item)
+        ){
+
+          if(
+            !a.batch_no
+          ){
+
+            return {
+              ok:false,
+              message:
+                "Select Batch for " +
+                (
+                  item.item_name ||
+                  item.item_code
+                )
+            };
+
+          }
+
+
+          batches[
+            a.batch_no
+          ] =
+            (
+              batches[
+                a.batch_no
+              ] || 0
+            ) +
+            qty;
+
+
+          var available =
+            srV13Available(
+              item,
+              warehouse,
+              a.batch_no
+            );
+
+
+          if(
+            available !== null &&
+            batches[
+              a.batch_no
+            ] >
+            available +
+            0.0000001
+          ){
+
+            return {
+              ok:false,
+              message:
+                "Batch " +
+                a.batch_no +
+                " has only " +
+                available +
+                " available."
+            };
+
+          }
+
+        }
+
+      }
+
+
+      if(
+        total >
+        required +
+        0.0000001
+      ){
+
+        return {
+          ok:false,
+          message:
+            "TRANSFER QTY cannot exceed " +
+            required +
+            " for " +
+            (
+              item.item_name ||
+              item.item_code
+            )
+        };
+
+      }
+
+
+      if(
+        Math.abs(
+          total - required
+        ) >
+        0.0000001
+      ){
+
+        return {
+          ok:false,
+          message:
+            "TRANSFER QTY must total " +
+            required +
+            " " +
+            (
+              item.stock_uom ||
+              ""
+            ) +
+            " for " +
+            (
+              item.item_name ||
+              item.item_code
+            ) +
+            ". Current total: " +
+            total
+        };
+
+      }
+
+
+      allocations.forEach(
+        function(a){
+
+          result.push({
+
+            original_item_code:
+              String(
+                item.original_item_code ||
+                item.item_code ||
+                ""
+              ).trim(),
+
+            item_code:
+              String(
+                item.item_code ||
+                ""
+              ).trim(),
+
+            qty:
+              Number(a.qty),
+
+            batch_no:
+              isBatchItem(item)
+                ? a.batch_no
+                : "",
+
+            source_warehouse:
+              warehouse
+
+          });
+
+        }
+      );
+
+    }
+
+
+    return {
+      ok:true,
+      work_order:
+        String(
+          detail.work_order
+        ),
+      items:
+        result
+    };
+
+  }
+
+
+  function srV13Available(
+    row,
+    warehouse,
+    batchNo
+  ){
+
+    var list =
+      getBatches(
+        row,
+        warehouse
+      );
+
+
+    for(
+      var i = 0;
+      i < list.length;
+      i++
+    ){
+
+      var b =
+        list[i] || {};
+
+
+      var name =
+        String(
+          b.batch_no ||
+          b.name ||
+          b.batch ||
+          ""
+        ).trim();
+
+
+      if(
+        name !== batchNo
+      ){
+
+        continue;
+
+      }
+
+
+      var qty =
+        Number(
+          b.available_qty ??
+          b.qty ??
+          b.actual_qty ??
+          b.stock_qty ??
+          0
+        );
+
+
+      return Number.isFinite(qty)
+        ? qty
+        : 0;
+
+    }
+
+
+    return null;
+
+  }
+
+
+  
+/* SR SUBMIT FETCH FIX V15 */
+
+async function srV15Call(
+  method,
+  args
+){
+
+  /*
+   * This page does not reliably expose window.frappe.
+   * Use Frappe's server-rendered CSRF token directly.
+   */
+  /*
+   * Frappe stores the active CSRF token in the csrf_token cookie.
+   * This page does not expose window.frappe reliably.
+   */
+  var csrf = "";
+
+  /* SR CSRF HTML TOKEN FALLBACK V19 */
+  try {
+
+    var pageHtml =
+      document.documentElement.innerHTML;
+
+    var htmlTokenMatch =
+      pageHtml.match(
+        /["\\']X-Frappe-CSRF-Token["\\']\\s*:\\s*["\\']([^"\\']+)["\\']/
+      );
+
+    if(htmlTokenMatch){
+
+      csrf =
+        htmlTokenMatch[1];
+
+    }
+
+  }catch(e){}
+
+  var cookieMatch =
+    document.cookie.match(
+      /(?:^|;\s*)csrf_token=([^;]+)/
+    );
+
+  if(cookieMatch){
+
+    try{
+
+      csrf =
+        decodeURIComponent(
+          cookieMatch[1]
+        );
+
+    }catch(e){
+
+      csrf =
+        cookieMatch[1];
+
+    }
+
+  }
+
+  /*
+   * Fallback to the server-rendered token.
+   */
+  if(
+    !csrf ||
+    csrf === "Guest" ||
+    csrf === "None" ||
+    csrf === "null"
+  ){
+
+    csrf =
+      "{{ csrf_token }}";
+
+  }
+
+  if(
+    !csrf ||
+    csrf === "Guest" ||
+    csrf === "None" ||
+    csrf === "null"
+  ){
+
+    var meta =
+      document.querySelector(
+        'meta[name="csrf-token"]'
+      );
+
+    if(meta){
+
+      csrf =
+        meta.getAttribute(
+          "content"
+        ) || "";
+
+    }
+
+  }
+
+  var response =
+    await fetch(
+      "/api/method/" + method,
+      {
+        method:
+          "POST",
+
+        credentials:
+          "same-origin",
+
+        headers: {
+          "Accept":
+            "application/json",
+
+          "Content-Type":
+            "application/json",
+
+          "X-Frappe-CSRF-Token":
+            csrf
+        },
+
+        body:
+          JSON.stringify(
+            args || {}
+          )
+      }
+    );
+
+
+  var data = null;
+
+  try{
+
+    data =
+      await response.json();
+
+  }catch(e){
+
+    data = null;
+
+  }
+
+
+  if(
+    !response.ok ||
+    !data ||
+    data.exc
+  ){
+
+    var message =
+      (
+        data &&
+        data._server_messages
+      )
+        ? data._server_messages
+        : (
+            data &&
+            data.exception
+          )
+            ? data.exception
+            : (
+                data &&
+                data.exc_type
+              )
+                ? data.exc_type
+                : (
+                    "API request failed (" +
+                    response.status +
+                    ")"
+                  );
+
+    throw new Error(
+      String(message)
+    );
+
+  }
+
+
+  return data;
+
+}
+
+
+
+async function submit(){
+
+    var checked =
+      validate();
+
+
+    if(
+      !checked.ok
+    ){
+
+      alert(
+        checked.message
+      );
+
+      return;
+
+    }
+
+
+    var button =
+      document.getElementById(
+        "srV13SaveSubmit"
+      );
+
+
+    if(button){
+
+      button.disabled =
+        true;
+
+      button.textContent =
+        "SAVING...";
+
+    }
+
+
+    try{
+
+      await srV15Call(
+        "sr_connect.www.home.create_stock_entry_from_work_order_multi_batch_final",
+        {
+          work_order_id:
+            checked.work_order,
+
+          items:
+            checked.items
+        }
+      );
+
+
+      if(
+        window.frappe &&
+        window.frappe.show_alert
+      ){
+
+        window.frappe.show_alert({
+
+          message:
+            "Stock Entry submitted successfully.",
+
+          indicator:
+            "green"
+
+        });
+
+      }
+
+
+      window.location.reload();
+
+
+    }catch(e){
+
+      console.error(
+        "V13 SUBMIT ERROR:",
+        e
+      );
+
+
+      if(
+        window.frappe &&
+        window.frappe.msgprint
+      ){
+
+        window.frappe.msgprint(
+          e &&
+          e.message
+            ? e.message
+            : "Unable to create Stock Entry."
+        );
+
+      }else{
+
+        alert(
+          e &&
+          e.message
+            ? e.message
+            : "Unable to create Stock Entry."
+        );
+
+      }
+
+
+      if(button){
+
+        button.disabled =
+          false;
+
+        button.textContent =
+          "SAVE & SUBMIT";
+
+      }
+
+    }
+
+  }
+
+
+  if(
+    document.readyState ===
+    "loading"
+  ){
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      install
+    );
+
+  }else{
+
+    install();
+
+  }
+
+
+  var observer =
+    new MutationObserver(
+      function(){
+
+        install();
+
+      }
+    );
+
+
+  if(document.body){
+
+    observer.observe(
+      document.body,
+      {
+        childList:true,
+        subtree:true
+      }
+    );
+
+  }
+
+
+  setTimeout(
+    install,
+    300
+  );
+
+  setTimeout(
+    install,
+    800
+  );
+
+  setTimeout(
+    install,
+    1500
+  );
+
+  setTimeout(
+    install,
+    2500
+  );
+
+
+})();
+</script>
+
 </body>
 </html>
 
@@ -32351,5 +35034,51 @@ window.srStandaloneProductCOASearchFinal = true;
   );
 
 })();
+
+/* =========================================================
+   SR MOBILE HORIZONTAL SWIPE GUARD
+
+   Keep vertical scrolling normal.
+   Prevent left/right swipe from triggering browser
+   history navigation on mobile.
+   ========================================================= */
+
+(function(){
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+
+  document.addEventListener("touchstart", function(e){
+    if(!e.touches || e.touches.length !== 1) return;
+
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    tracking = true;
+  }, {passive:true});
+
+  document.addEventListener("touchmove", function(e){
+    if(!tracking || !e.touches || e.touches.length !== 1) return;
+
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+
+    /*
+     * Only block a clear horizontal gesture.
+     * Normal vertical page scrolling remains untouched.
+     */
+    if(Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy) * 1.25){
+      e.preventDefault();
+    }
+  }, {passive:false});
+
+  document.addEventListener("touchend", function(){
+    tracking = false;
+  }, {passive:true});
+
+  document.addEventListener("touchcancel", function(){
+    tracking = false;
+  }, {passive:true});
+})();
+
 </script>
 

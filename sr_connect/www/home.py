@@ -452,6 +452,9 @@ def sr_stock_entry_submit_v3(
 # =========================================================
 
 def get_context(context):
+    # SR CSRF CONTEXT V18
+    context["csrf_token"] = frappe.session.csrf_token
+
     context.no_cache = 1
 
     user = frappe.session.user
@@ -4664,6 +4667,139 @@ def sr_stock_entry_detail_v3(
                 batches,
         })
 
+    # -----------------------------------------------------
+    # FULLY TRANSFERRED WORK ORDER
+    #
+    # When no material remains pending, return the submitted
+    # Material Transfer history so the frontend can show the
+    # Work Order details/history instead of a blank materials
+    # section.
+    #
+    # Pending Work Orders keep stock_entries=[] and therefore
+    # keep the existing editable transfer UI.
+    # -----------------------------------------------------
+    stock_entries = []
+
+    if not materials:
+
+        transfer_entries = frappe.get_all(
+            "Stock Entry",
+            filters={
+                "work_order": wo.name,
+                "docstatus": 1,
+                "stock_entry_type":
+                    "Material Transfer for Manufacture",
+            },
+            fields=[
+                "name",
+                "posting_date",
+                "posting_time",
+                "purpose",
+                "stock_entry_type",
+                "from_warehouse",
+                "to_warehouse",
+                "creation",
+            ],
+            order_by=(
+                "posting_date desc, "
+                "posting_time desc, "
+                "creation desc"
+            ),
+            limit_page_length=100,
+        )
+
+        for entry in transfer_entries:
+
+            children = frappe.get_all(
+                "Stock Entry Detail",
+                filters={
+                    "parent": entry.name,
+                    "parenttype": "Stock Entry",
+                },
+                fields=[
+                    "item_code",
+                    "item_name",
+                    "qty",
+                    "uom",
+                    "stock_uom",
+                    "s_warehouse",
+                    "t_warehouse",
+                    "batch_no",
+                ],
+                order_by="idx asc",
+                limit_page_length=500,
+            )
+
+            for child in children:
+
+                stock_entries.append({
+
+                    "stock_entry":
+                        str(
+                            entry.name or ""
+                        ),
+
+                    "posting_date":
+                        str(
+                            entry.posting_date or ""
+                        ),
+
+                    "posting_time":
+                        str(
+                            entry.posting_time or ""
+                        ),
+
+                    "purpose":
+                        str(
+                            entry.purpose
+                            or entry.stock_entry_type
+                            or ""
+                        ),
+
+                    "item_code":
+                        str(
+                            child.item_code or ""
+                        ),
+
+                    "item_name":
+                        str(
+                            child.item_name
+                            or child.item_code
+                            or ""
+                        ),
+
+                    "qty":
+                        flt(
+                            child.qty or 0
+                        ),
+
+                    "uom":
+                        str(
+                            child.stock_uom
+                            or child.uom
+                            or ""
+                        ),
+
+                    "source_warehouse":
+                        str(
+                            child.s_warehouse
+                            or entry.from_warehouse
+                            or ""
+                        ),
+
+                    "target_warehouse":
+                        str(
+                            child.t_warehouse
+                            or entry.to_warehouse
+                            or ""
+                        ),
+
+                    "batch_no":
+                        str(
+                            child.batch_no or ""
+                        ),
+                })
+
     return {
 
         "success":
@@ -4716,7 +4852,11 @@ def sr_stock_entry_detail_v3(
 
         "materials":
             materials,
+
+        "stock_entries":
+            stock_entries,
     }
+
 
 
 
@@ -6487,6 +6627,8 @@ def get_stock_balance_dates(item_code, month, category=None):
             sle.actual_qty,
             sle.qty_after_transaction,
             sle.stock_uom,
+            sle.batch_no,
+            sle.serial_and_batch_bundle,
             sle.voucher_type,
             sle.voucher_no
         FROM `tabStock Ledger Entry` sle
@@ -6577,6 +6719,26 @@ def get_stock_balance_dates(item_code, month, category=None):
                 erp_balance
             ),
             "movement": movement,
+            "batch_no": (
+                str(row.batch_no or "").strip()
+                or (
+                    str(
+                        frappe.db.get_value(
+                            "Serial and Batch Entry",
+                            {
+                                "parent": row.serial_and_batch_bundle,
+                                "parenttype": "Serial and Batch Bundle",
+                                "batch_no": ["is", "set"],
+                            },
+                            "batch_no",
+                            order_by="idx asc",
+                        )
+                        or ""
+                    ).strip()
+                    if row.serial_and_batch_bundle
+                    else ""
+                )
+            ),
             "voucher_type": row.voucher_type or "",
             "voucher_no": row.voucher_no or "",
             "posting_time": str(row.posting_time or ""),
@@ -10832,4 +10994,2211 @@ def sr_coa_search_batch(batch_no, product_coa=1, application_coa=0):
         "product_coa": product_enabled,
         "application_coa": application_enabled,
         "quality_inspections": inspections,
+    }
+
+
+# =========================================================
+# SR_CREATE_STOCK_ENTRY_MULTI_BATCH_V1
+# Multiple batch allocations for one Work Order material
+# =========================================================
+
+@frappe.whitelist()
+def create_stock_entry_from_work_order_multi_batch(
+    work_order_id,
+    items,
+):
+    import json
+
+    from frappe.utils import flt
+
+    if _is_guest():
+        frappe.throw(
+            "Please login"
+        )
+
+    if not frappe.has_permission(
+        "Work Order",
+        ptype="read",
+        user=frappe.session.user,
+    ):
+        frappe.throw(
+            "You do not have permission to access this Work Order."
+        )
+
+    if not frappe.has_permission(
+        "Stock Entry",
+        ptype="create",
+        user=frappe.session.user,
+    ):
+        frappe.throw(
+            "You do not have permission to create Stock Entry."
+        )
+
+    work_order_id = str(
+        work_order_id or ""
+    ).strip()
+
+    if not work_order_id:
+        frappe.throw(
+            "Work Order is required."
+        )
+
+    if isinstance(items, str):
+        try:
+            items = json.loads(items)
+        except Exception:
+            frappe.throw(
+                "Invalid material data."
+            )
+
+    if not isinstance(items, list) or not items:
+        frappe.throw(
+            "No material allocations received."
+        )
+
+    if not frappe.db.exists(
+        "Work Order",
+        work_order_id,
+    ):
+        frappe.throw(
+            "Work Order not found."
+        )
+
+    wo = frappe.get_doc(
+        "Work Order",
+        work_order_id,
+    )
+
+    real_rows = {}
+
+    for row in (
+        wo.get("required_items")
+        or []
+    ):
+        code = str(
+            row.item_code or ""
+        ).strip()
+
+        if code:
+            real_rows[code] = row
+
+    if not real_rows:
+        frappe.throw(
+            "No required raw materials found in Work Order."
+        )
+
+    cleaned = []
+
+    for index, data in enumerate(items):
+        if not isinstance(data, dict):
+            frappe.throw(
+                "Invalid allocation at row "
+                + str(index + 1)
+                + "."
+            )
+
+        original_item_code = str(
+            data.get(
+                "original_item_code"
+            )
+            or data.get(
+                "item_code"
+            )
+            or ""
+        ).strip()
+
+        item_code = str(
+            data.get(
+                "item_code"
+            )
+            or original_item_code
+            or ""
+        ).strip()
+
+        qty = flt(
+            data.get(
+                "qty"
+            )
+            or 0
+        )
+
+        batch_no = str(
+            data.get(
+                "batch_no"
+            )
+            or ""
+        ).strip()
+
+        source_warehouse = str(
+            data.get(
+                "source_warehouse"
+            )
+            or ""
+        ).strip()
+
+        if not original_item_code:
+            frappe.throw(
+                "Original item is missing at allocation row "
+                + str(index + 1)
+                + "."
+            )
+
+        if original_item_code not in real_rows:
+            frappe.throw(
+                original_item_code
+                + " is not required by Work Order "
+                + work_order_id
+                + "."
+            )
+
+        if qty <= 0:
+            frappe.throw(
+                "Transfer Qty must be greater than zero for "
+                + item_code
+                + "."
+            )
+
+        if not source_warehouse:
+            frappe.throw(
+                "Source Warehouse is required for "
+                + item_code
+                + "."
+            )
+
+        # -----------------------------------------------------
+        # Alternative Item support:
+        # Keep the original BOM item identity, but allow the
+        # selected stock item only when it belongs to the same
+        # Item Group.
+        # -----------------------------------------------------
+
+        if item_code != original_item_code:
+            original_group = (
+                frappe.db.get_value(
+                    "Item",
+                    original_item_code,
+                    "item_group",
+                )
+                or ""
+            )
+
+            selected_group = (
+                frappe.db.get_value(
+                    "Item",
+                    item_code,
+                    "item_group",
+                )
+                or ""
+            )
+
+            if (
+                not original_group
+                or
+                original_group != selected_group
+            ):
+                frappe.throw(
+                    item_code
+                    + " is not an allowed alternative for "
+                    + original_item_code
+                    + "."
+                )
+
+        item_has_batch_no = int(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "has_batch_no",
+            )
+            or 0
+        )
+
+        if (
+            item_has_batch_no
+            and not batch_no
+        ):
+            frappe.throw(
+                "Select a Batch for "
+                + item_code
+                + "."
+            )
+
+        cleaned.append(
+            {
+                "original_item_code":
+                    original_item_code,
+
+                "item_code":
+                    item_code,
+
+                "qty":
+                    qty,
+
+                "batch_no":
+                    batch_no,
+
+                "source_warehouse":
+                    source_warehouse,
+
+                "has_batch_no":
+                    item_has_batch_no,
+            }
+        )
+
+    # ---------------------------------------------------------
+    # Validate total transfer against the Work Order remaining
+    # quantity for EACH original BOM material.
+    # ---------------------------------------------------------
+
+    totals = {}
+
+    for data in cleaned:
+        key = (
+            data["original_item_code"]
+        )
+
+        totals[key] = (
+            flt(
+                totals.get(
+                    key,
+                    0,
+                )
+            )
+            + flt(
+                data["qty"]
+            )
+        )
+
+    for original_item_code, total_qty in totals.items():
+        row = real_rows[
+            original_item_code
+        ]
+
+        required_qty = flt(
+            row.required_qty
+            or 0
+        )
+
+        transferred_qty = flt(
+            row.transferred_qty
+            or 0
+        )
+
+        remaining_qty = max(
+            0,
+            required_qty
+            - transferred_qty
+        )
+
+        if total_qty > (
+            remaining_qty + 0.000001
+        ):
+            frappe.throw(
+                "Total Transfer Qty for "
+                + original_item_code
+                + " cannot exceed remaining Qty "
+                + str(
+                    remaining_qty
+                )
+                + "."
+            )
+
+    # ---------------------------------------------------------
+    # Validate batch/warehouse stock.
+    # Each batch is checked independently.
+    # Multiple allocations for different batches are allowed.
+    # ---------------------------------------------------------
+
+    batch_requested = {}
+
+    for data in cleaned:
+        if not data["has_batch_no"]:
+            continue
+
+        key = (
+            data["item_code"],
+            data["source_warehouse"],
+            data["batch_no"],
+        )
+
+        batch_requested[key] = (
+            flt(
+                batch_requested.get(
+                    key,
+                    0,
+                )
+            )
+            + flt(
+                data["qty"]
+            )
+        )
+
+    for key, requested_qty in batch_requested.items():
+        item_code, warehouse, batch_no = key
+
+        available_qty = 0
+
+        bundle_helper = globals().get(
+            "_sr_v3_batch_bundle_stock"
+        )
+
+        if callable(
+            bundle_helper
+        ):
+            try:
+                bundle_stock = (
+                    bundle_helper(
+                        item_code,
+                        warehouse,
+                    )
+                    or {}
+                )
+
+                available_qty = flt(
+                    bundle_stock.get(
+                        batch_no,
+                        0,
+                    )
+                    or 0
+                )
+            except Exception:
+                available_qty = 0
+
+        # Fallback to Stock Ledger Entry.
+        if available_qty <= 0:
+            result = frappe.db.sql(
+                """
+                SELECT
+                    COALESCE(
+                        SUM(actual_qty),
+                        0
+                    )
+                FROM `tabStock Ledger Entry`
+                WHERE
+                    item_code = %s
+                    AND warehouse = %s
+                    AND batch_no = %s
+                    AND is_cancelled = 0
+                """,
+                (
+                    item_code,
+                    warehouse,
+                    batch_no,
+                ),
+            )
+
+            available_qty = flt(
+                result[0][0]
+                if result
+                else 0
+            )
+
+        if requested_qty > (
+            available_qty + 0.000001
+        ):
+            frappe.throw(
+                "Batch "
+                + batch_no
+                + " has only "
+                + str(
+                    available_qty
+                )
+                + " available for "
+                + item_code
+                + " in "
+                + warehouse
+                + ", but "
+                + str(
+                    requested_qty
+                )
+                + " was requested."
+            )
+
+    # ---------------------------------------------------------
+    # Non-batch stock validation.
+    # ---------------------------------------------------------
+
+    non_batch_requested = {}
+
+    for data in cleaned:
+        if data["has_batch_no"]:
+            continue
+
+        key = (
+            data["item_code"],
+            data["source_warehouse"],
+        )
+
+        non_batch_requested[key] = (
+            flt(
+                non_batch_requested.get(
+                    key,
+                    0,
+                )
+            )
+            + flt(
+                data["qty"]
+            )
+        )
+
+    for key, requested_qty in non_batch_requested.items():
+        item_code, warehouse = key
+
+        available_qty = flt(
+            frappe.db.get_value(
+                "Bin",
+                {
+                    "item_code":
+                        item_code,
+
+                    "warehouse":
+                        warehouse,
+                },
+                "actual_qty",
+            )
+            or 0
+        )
+
+        if requested_qty > (
+            available_qty + 0.000001
+        ):
+            frappe.throw(
+                "Stock not enough for "
+                + item_code
+                + ". Available: "
+                + str(
+                    available_qty
+                )
+                + ", Requested: "
+                + str(
+                    requested_qty
+                )
+                + "."
+            )
+
+    if not wo.wip_warehouse:
+        frappe.throw(
+            "Work In Progress warehouse is missing."
+        )
+
+    # ---------------------------------------------------------
+    # CREATE STOCK ENTRY
+    # ---------------------------------------------------------
+
+    se = frappe.new_doc(
+        "Stock Entry"
+    )
+
+    se.stock_entry_type = (
+        "Material Transfer for Manufacture"
+    )
+
+    se.purpose = (
+        "Material Transfer for Manufacture"
+    )
+
+    se.use_serial_batch_fields = 1
+
+    se.work_order = (
+        wo.name
+    )
+
+    se.company = (
+        wo.company
+    )
+
+    for data in cleaned:
+
+        child = se.append(
+            "items",
+            {}
+        )
+
+        child.item_code = (
+            data["item_code"]
+        )
+
+        child.qty = (
+            data["qty"]
+        )
+
+        child.uom = (
+            frappe.db.get_value(
+                "Item",
+                data["item_code"],
+                "stock_uom",
+            )
+            or
+            ""
+        )
+
+        child.s_warehouse = (
+            data["source_warehouse"]
+        )
+
+        child.t_warehouse = (
+            wo.wip_warehouse
+        )
+
+        child.use_serial_batch_fields = 1
+
+        if data["has_batch_no"]:
+            child.batch_no = (
+                data["batch_no"]
+            )
+
+    if not se.items:
+        frappe.throw(
+            "No valid material allocations found."
+        )
+
+    try:
+        se.insert(
+            ignore_permissions=True
+        )
+
+        se.submit()
+
+        if (
+            se.docstatus == 1
+            and wo.name
+        ):
+            frappe.db.set_value(
+                "Work Order",
+                wo.name,
+                "status",
+                "In Process",
+                update_modified=True,
+            )
+
+        frappe.db.commit()
+
+    except Exception:
+        frappe.db.rollback()
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "SR MULTI BATCH STOCK ENTRY SUBMIT ERROR",
+        )
+
+        raise
+
+    return {
+        "success":
+            True,
+
+        "name":
+            str(
+                se.name
+            ),
+
+        "work_order":
+            str(
+                wo.name
+            ),
+
+        "message":
+            "Stock Entry submitted successfully.",
+    }
+
+# SR_TRANSFER_QTY_MULTI_BATCH_BACKEND_CLEAN_V1
+
+@frappe.whitelist()
+def create_stock_entry_from_work_order_multi_batch_final(
+    work_order_id,
+    items,
+    stock_entry=None,
+):
+    import json
+
+    if _is_guest():
+        frappe.throw("Please login.")
+
+    work_order_id = str(work_order_id or "").strip()
+
+    if not work_order_id:
+        frappe.throw("Work Order is required.")
+
+    if isinstance(items, str):
+        try:
+            items = json.loads(items)
+        except Exception:
+            frappe.throw("Invalid material data.")
+
+    if not isinstance(items, list) or not items:
+        frappe.throw("No material allocations supplied.")
+
+    if not frappe.db.exists("Work Order", work_order_id):
+        frappe.throw("Work Order not found.")
+
+    wo = frappe.get_doc("Work Order", work_order_id)
+
+    # ---------------------------------------------------------
+    # EXISTING DRAFT RESUME
+    # If the frontend sends a Stock Entry name, update that
+    # exact Draft instead of creating a second Stock Entry.
+    # ---------------------------------------------------------
+    stock_entry = str(stock_entry or "").strip()
+
+    se = None
+
+    if stock_entry:
+        if not frappe.db.exists("Stock Entry", stock_entry):
+            frappe.throw(
+                "Draft Stock Entry not found: " + stock_entry
+            )
+
+        se = frappe.get_doc("Stock Entry", stock_entry)
+
+        if int(se.docstatus or 0) != 0:
+            frappe.throw(
+                "This Stock Entry is no longer a Draft."
+            )
+
+        if str(se.stock_entry_type or "").strip() != (
+            "Material Transfer for Manufacture"
+        ):
+            frappe.throw(
+                "Invalid Stock Entry type for this Draft."
+            )
+
+        existing_wo = str(
+            getattr(se, "work_order", "") or ""
+        ).strip()
+
+        if existing_wo and existing_wo != work_order_id:
+            frappe.throw(
+                "This Draft belongs to another Work Order."
+            )
+
+        # Reuse the SAME Draft. Never append to its old rows.
+        se.set("items", [])
+
+    if not wo.wip_warehouse:
+        frappe.throw(
+            "Work In Progress warehouse is not set on the Work Order."
+        )
+
+    # ---------------------------------------------------------
+    # Access control: same rule as existing Stock Entry V3.
+    # ---------------------------------------------------------
+    roles = set(frappe.get_roles(frappe.session.user))
+
+    manager_access = bool(
+        {
+            "System Manager",
+            "Manufacturing Manager",
+            "Production Manager",
+        } & roles
+    )
+
+    if not manager_access:
+        allowed = frappe.db.sql(
+            """
+            SELECT jc.name
+            FROM `tabJob Card` jc
+            INNER JOIN `tabToDo` td
+                ON td.reference_type = 'Job Card'
+               AND td.reference_name = jc.name
+            WHERE td.allocated_to = %s
+              AND td.status = 'Open'
+              AND jc.work_order = %s
+            LIMIT 1
+            """,
+            (
+                frappe.session.user,
+                work_order_id,
+            ),
+            as_dict=True,
+        )
+
+        if not allowed:
+            frappe.throw(
+                "You do not have access to this Work Order."
+            )
+
+    # ---------------------------------------------------------
+    # Required Work Order materials.
+    # ---------------------------------------------------------
+    required = {}
+
+    for row in wo.get("required_items") or []:
+        code = str(
+            getattr(row, "item_code", "") or ""
+        ).strip()
+
+        if code:
+            required[code] = row
+
+    if not required:
+        frappe.throw(
+            "No required materials found on the Work Order."
+        )
+
+    # ---------------------------------------------------------
+    # Normalize allocation rows.
+    # IMPORTANT:
+    # Duplicate item_code is allowed because each allocation
+    # represents a different batch.
+    # ---------------------------------------------------------
+    allocations = []
+
+    for data in items:
+        if not isinstance(data, dict):
+            continue
+
+        original_item_code = str(
+            data.get("original_item_code")
+            or data.get("item_code")
+            or ""
+        ).strip()
+
+        item_code = str(
+            data.get("item_code") or ""
+        ).strip()
+
+        qty = flt(
+            data.get("qty") or 0
+        )
+
+        batch_no = str(
+            data.get("batch_no") or ""
+        ).strip()
+
+        source_warehouse = str(
+            data.get("source_warehouse") or ""
+        ).strip()
+
+        if not original_item_code:
+            continue
+
+        if not item_code:
+            continue
+
+        if qty <= 0:
+            frappe.throw(
+                item_code +
+                ": Transfer Qty must be greater than zero."
+            )
+
+        if original_item_code not in required:
+            frappe.throw(
+                item_code +
+                " is not required by this Work Order."
+            )
+
+        row = required[original_item_code]
+
+        required_qty = flt(
+            getattr(row, "required_qty", 0) or 0
+        )
+
+        transferred_qty = flt(
+            getattr(row, "transferred_qty", 0) or 0
+        )
+
+        remaining_qty = max(
+            0,
+            required_qty - transferred_qty
+        )
+
+        if remaining_qty <= 0:
+            frappe.throw(
+                original_item_code +
+                " has no remaining quantity."
+            )
+
+        if not source_warehouse:
+            source_warehouse = str(
+                getattr(
+                    row,
+                    "source_warehouse",
+                    ""
+                ) or ""
+            ).strip()
+
+        if not source_warehouse:
+            frappe.throw(
+                "Source Warehouse missing for " +
+                item_code
+            )
+
+        if not frappe.db.exists(
+            "Warehouse",
+            source_warehouse
+        ):
+            frappe.throw(
+                "Source Warehouse not found: " +
+                source_warehouse
+            )
+
+        if not frappe.db.exists(
+            "Item",
+            item_code
+        ):
+            frappe.throw(
+                "Item not found: " +
+                item_code
+            )
+
+        # -----------------------------------------------------
+        # Alternative Item safety.
+        # Keep existing alternative-item behaviour:
+        # selected stock item must be in same Item Group.
+        # -----------------------------------------------------
+        if item_code != original_item_code:
+            original_group = frappe.db.get_value(
+                "Item",
+                original_item_code,
+                "item_group"
+            )
+
+            selected_group = frappe.db.get_value(
+                "Item",
+                item_code,
+                "item_group"
+            )
+
+            if (
+                original_group
+                and selected_group
+                and original_group != selected_group
+            ):
+                frappe.throw(
+                    item_code +
+                    " is not a valid alternative for " +
+                    original_item_code
+                )
+
+        has_batch_no = int(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "has_batch_no"
+            ) or 0
+        )
+
+        if has_batch_no and not batch_no:
+            frappe.throw(
+                "Select a Batch for " +
+                item_code
+            )
+
+        allocations.append({
+            "original_item_code": original_item_code,
+            "item_code": item_code,
+            "qty": qty,
+            "batch_no": batch_no,
+            "source_warehouse": source_warehouse,
+            "has_batch_no": has_batch_no,
+            "remaining_qty": remaining_qty,
+        })
+
+    if not allocations:
+        frappe.throw(
+            "No valid material allocations supplied."
+        )
+
+    # ---------------------------------------------------------
+    # TOTAL TRANSFER must equal remaining Work Order quantity.
+    # Example:
+    # Required 333
+    # Batch A 3
+    # Batch B 330
+    # Total = 333
+    # ---------------------------------------------------------
+    totals = {}
+    remaining_by_item = {}
+
+    for allocation in allocations:
+        key = allocation["original_item_code"]
+
+        totals[key] = (
+            flt(totals.get(key, 0))
+            + flt(allocation["qty"])
+        )
+
+        remaining_by_item[key] = flt(
+            allocation["remaining_qty"]
+        )
+
+    for key, total_qty in totals.items():
+        allowed_qty = flt(
+            remaining_by_item[key]
+        )
+
+        if (
+            total_qty >
+            allowed_qty + 0.0000001
+        ):
+            frappe.throw(
+                key +
+                ": Transfer Qty " +
+                str(total_qty) +
+                " exceeds remaining Work Order Qty " +
+                str(allowed_qty) +
+                "."
+            )
+
+        if (
+            abs(
+                total_qty - allowed_qty
+            ) > 0.0000001
+        ):
+            frappe.throw(
+                key +
+                ": Total Transfer Qty " +
+                str(total_qty) +
+                " must equal remaining Work Order Qty " +
+                str(allowed_qty) +
+                "."
+            )
+
+    # ---------------------------------------------------------
+    # Validate available stock independently per
+    # ITEM + WAREHOUSE + BATCH.
+    # ---------------------------------------------------------
+    stock_requests = {}
+
+    for allocation in allocations:
+        key = (
+            allocation["item_code"],
+            allocation["source_warehouse"],
+            allocation["batch_no"],
+        )
+
+        stock_requests[key] = (
+            flt(stock_requests.get(key, 0))
+            + flt(allocation["qty"])
+        )
+
+    for (
+        stock_key,
+        requested_qty
+    ) in stock_requests.items():
+
+        item_code = stock_key[0]
+        warehouse = stock_key[1]
+        batch_no = stock_key[2]
+
+        has_batch_no = int(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "has_batch_no"
+            ) or 0
+        )
+
+        available_qty = 0
+
+        if has_batch_no:
+
+            # ERPNext batch-bundle stock helper when available.
+            batch_helper = globals().get(
+                "_sr_v3_batch_bundle_stock"
+            )
+
+            if callable(batch_helper):
+                try:
+                    batch_stock = batch_helper(
+                        item_code,
+                        warehouse
+                    ) or {}
+
+                    available_qty = flt(
+                        batch_stock.get(
+                            batch_no,
+                            0
+                        )
+                    )
+                except Exception:
+                    available_qty = 0
+
+            # Fallback to Stock Ledger Entry.
+            if available_qty <= 0:
+                available_qty = flt(
+                    frappe.db.sql(
+                        """
+                        SELECT SUM(actual_qty)
+                        FROM `tabStock Ledger Entry`
+                        WHERE item_code = %s
+                          AND warehouse = %s
+                          AND batch_no = %s
+                          AND is_cancelled = 0
+                        """,
+                        (
+                            item_code,
+                            warehouse,
+                            batch_no,
+                        ),
+                    )[0][0]
+                    or 0
+                )
+
+        else:
+            available_qty = flt(
+                frappe.db.get_value(
+                    "Bin",
+                    {
+                        "item_code": item_code,
+                        "warehouse": warehouse,
+                    },
+                    "actual_qty"
+                ) or 0
+            )
+
+        if (
+            requested_qty >
+            available_qty + 0.0000001
+        ):
+            label = item_code
+
+            if batch_no:
+                label += (
+                    " / Batch " +
+                    batch_no
+                )
+
+            frappe.throw(
+                label +
+                ": available " +
+                str(available_qty) +
+                ", requested " +
+                str(requested_qty)
+            )
+
+    # ---------------------------------------------------------
+    # CREATE / UPDATE ONE Stock Entry.
+    #
+    # New save:
+    #     create a new Draft.
+    #
+    # Resume save:
+    #     reuse the exact existing Draft and replace its
+    #     child rows. This prevents duplicate material rows
+    #     and duplicate Draft Stock Entries.
+    # ---------------------------------------------------------
+    if se is None:
+        se = frappe.new_doc(
+            "Stock Entry"
+        )
+
+    se.stock_entry_type = (
+        "Material Transfer for Manufacture"
+    )
+
+    se.purpose = (
+        "Material Transfer for Manufacture"
+    )
+
+    se.use_serial_batch_fields = 1
+
+    se.work_order = wo.name
+
+    se.company = wo.company
+
+    se.from_bom = 1
+
+    se.bom_no = (
+        wo.bom_no or ""
+    )
+
+    se.fg_completed_qty = flt(
+        wo.qty or 0
+    )
+
+    se.remarks = (
+        "SR Connect Multi Batch Transfer"
+        + " | Work Order: "
+        + str(wo.name)
+    )
+
+    for allocation in allocations:
+
+        child = se.append(
+            "items",
+            {}
+        )
+
+        child.item_code = (
+            allocation["item_code"]
+        )
+
+        child.qty = flt(
+            allocation["qty"]
+        )
+
+        child.uom = (
+            frappe.db.get_value(
+                "Item",
+                allocation["item_code"],
+                "stock_uom"
+            ) or ""
+        )
+
+        child.s_warehouse = (
+            allocation["source_warehouse"]
+        )
+
+        child.t_warehouse = (
+            wo.wip_warehouse
+        )
+
+        if allocation["has_batch_no"]:
+            child.batch_no = (
+                allocation["batch_no"]
+            )
+
+            # IMPORTANT:
+            # Use the legacy serial/batch fields directly.
+            # Do not let ERPNext create a Serial and Batch Bundle
+            # for this row while batch_no is already supplied.
+            child.use_serial_batch_fields = 1
+            child.serial_and_batch_bundle = None
+
+    if not se.items:
+        frappe.throw(
+            "No Stock Entry rows were created."
+        )
+
+    try:
+        se.insert(
+            ignore_permissions=True
+        )
+
+        se.submit()
+
+        frappe.db.commit()
+
+    except Exception:
+        frappe.db.rollback()
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "SR MULTI BATCH STOCK ENTRY CLEAN"
+        )
+
+        raise
+
+    return {
+        "success": True,
+        "stock_entry": str(se.name),
+        "name": str(se.name),
+        "work_order": str(wo.name),
+        "message": (
+            "Stock Entry submitted successfully."
+        ),
+    }
+
+
+@frappe.whitelist()
+def save_stock_entry_from_work_order_multi_batch_final(
+    work_order_id,
+    items,
+    stock_entry=None,
+):
+    import json
+
+    if _is_guest():
+        frappe.throw("Please login.")
+
+    work_order_id = str(work_order_id or "").strip()
+
+    if not work_order_id:
+        frappe.throw("Work Order is required.")
+
+    if isinstance(items, str):
+        try:
+            items = json.loads(items)
+        except Exception:
+            frappe.throw("Invalid material data.")
+
+    if not isinstance(items, list) or not items:
+        frappe.throw("No material allocations supplied.")
+
+    if not frappe.db.exists("Work Order", work_order_id):
+        frappe.throw("Work Order not found.")
+
+    wo = frappe.get_doc("Work Order", work_order_id)
+
+    if not wo.wip_warehouse:
+        frappe.throw(
+            "Work In Progress warehouse is not set on the Work Order."
+        )
+
+    # ---------------------------------------------------------
+    # Access control: same rule as existing Stock Entry V3.
+    # ---------------------------------------------------------
+    roles = set(frappe.get_roles(frappe.session.user))
+
+    manager_access = bool(
+        {
+            "System Manager",
+            "Manufacturing Manager",
+            "Production Manager",
+        } & roles
+    )
+
+    if not manager_access:
+        allowed = frappe.db.sql(
+            """
+            SELECT jc.name
+            FROM `tabJob Card` jc
+            INNER JOIN `tabToDo` td
+                ON td.reference_type = 'Job Card'
+               AND td.reference_name = jc.name
+            WHERE td.allocated_to = %s
+              AND td.status = 'Open'
+              AND jc.work_order = %s
+            LIMIT 1
+            """,
+            (
+                frappe.session.user,
+                work_order_id,
+            ),
+            as_dict=True,
+        )
+
+        if not allowed:
+            frappe.throw(
+                "You do not have access to this Work Order."
+            )
+
+    # ---------------------------------------------------------
+    # Required Work Order materials.
+    # ---------------------------------------------------------
+    required = {}
+
+    for row in wo.get("required_items") or []:
+        code = str(
+            getattr(row, "item_code", "") or ""
+        ).strip()
+
+        if code:
+            required[code] = row
+
+    if not required:
+        frappe.throw(
+            "No required materials found on the Work Order."
+        )
+
+    # ---------------------------------------------------------
+    # Normalize allocation rows.
+    # IMPORTANT:
+    # Duplicate item_code is allowed because each allocation
+    # represents a different batch.
+    # ---------------------------------------------------------
+    allocations = []
+
+    for data in items:
+        if not isinstance(data, dict):
+            continue
+
+        original_item_code = str(
+            data.get("original_item_code")
+            or data.get("item_code")
+            or ""
+        ).strip()
+
+        item_code = str(
+            data.get("item_code") or ""
+        ).strip()
+
+        qty = flt(
+            data.get("qty") or 0
+        )
+
+        batch_no = str(
+            data.get("batch_no") or ""
+        ).strip()
+
+        source_warehouse = str(
+            data.get("source_warehouse") or ""
+        ).strip()
+
+        if not original_item_code:
+            continue
+
+        if not item_code:
+            continue
+
+        if qty <= 0:
+            frappe.throw(
+                item_code +
+                ": Transfer Qty must be greater than zero."
+            )
+
+        if original_item_code not in required:
+            frappe.throw(
+                item_code +
+                " is not required by this Work Order."
+            )
+
+        row = required[original_item_code]
+
+        required_qty = flt(
+            getattr(row, "required_qty", 0) or 0
+        )
+
+        transferred_qty = flt(
+            getattr(row, "transferred_qty", 0) or 0
+        )
+
+        remaining_qty = max(
+            0,
+            required_qty - transferred_qty
+        )
+
+        if remaining_qty <= 0:
+            frappe.throw(
+                original_item_code +
+                " has no remaining quantity."
+            )
+
+        if not source_warehouse:
+            source_warehouse = str(
+                getattr(
+                    row,
+                    "source_warehouse",
+                    ""
+                ) or ""
+            ).strip()
+
+        if not source_warehouse:
+            frappe.throw(
+                "Source Warehouse missing for " +
+                item_code
+            )
+
+        if not frappe.db.exists(
+            "Warehouse",
+            source_warehouse
+        ):
+            frappe.throw(
+                "Source Warehouse not found: " +
+                source_warehouse
+            )
+
+        if not frappe.db.exists(
+            "Item",
+            item_code
+        ):
+            frappe.throw(
+                "Item not found: " +
+                item_code
+            )
+
+        # -----------------------------------------------------
+        # Alternative Item safety.
+        # Keep existing alternative-item behaviour:
+        # selected stock item must be in same Item Group.
+        # -----------------------------------------------------
+        if item_code != original_item_code:
+            original_group = frappe.db.get_value(
+                "Item",
+                original_item_code,
+                "item_group"
+            )
+
+            selected_group = frappe.db.get_value(
+                "Item",
+                item_code,
+                "item_group"
+            )
+
+            if (
+                original_group
+                and selected_group
+                and original_group != selected_group
+            ):
+                frappe.throw(
+                    item_code +
+                    " is not a valid alternative for " +
+                    original_item_code
+                )
+
+        has_batch_no = int(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "has_batch_no"
+            ) or 0
+        )
+
+        if has_batch_no and not batch_no:
+            frappe.throw(
+                "Select a Batch for " +
+                item_code
+            )
+
+        allocations.append({
+            "original_item_code": original_item_code,
+            "item_code": item_code,
+            "qty": qty,
+            "batch_no": batch_no,
+            "source_warehouse": source_warehouse,
+            "has_batch_no": has_batch_no,
+            "remaining_qty": remaining_qty,
+        })
+
+    if not allocations:
+        frappe.throw(
+            "No valid material allocations supplied."
+        )
+
+    # ---------------------------------------------------------
+    # TOTAL TRANSFER must equal remaining Work Order quantity.
+    # Example:
+    # Required 333
+    # Batch A 3
+    # Batch B 330
+    # Total = 333
+    # ---------------------------------------------------------
+    totals = {}
+    remaining_by_item = {}
+
+    for allocation in allocations:
+        key = allocation["original_item_code"]
+
+        totals[key] = (
+            flt(totals.get(key, 0))
+            + flt(allocation["qty"])
+        )
+
+        remaining_by_item[key] = flt(
+            allocation["remaining_qty"]
+        )
+
+    for key, total_qty in totals.items():
+        allowed_qty = flt(
+            remaining_by_item[key]
+        )
+
+        if (
+            total_qty >
+            allowed_qty + 0.0000001
+        ):
+            frappe.throw(
+                key +
+                ": Transfer Qty " +
+                str(total_qty) +
+                " exceeds remaining Work Order Qty " +
+                str(allowed_qty) +
+                "."
+            )
+
+        if (
+            abs(
+                total_qty - allowed_qty
+            ) > 0.0000001
+        ):
+            frappe.throw(
+                key +
+                ": Total Transfer Qty " +
+                str(total_qty) +
+                " must equal remaining Work Order Qty " +
+                str(allowed_qty) +
+                "."
+            )
+
+    # ---------------------------------------------------------
+    # Validate available stock independently per
+    # ITEM + WAREHOUSE + BATCH.
+    # ---------------------------------------------------------
+    stock_requests = {}
+
+    for allocation in allocations:
+        key = (
+            allocation["item_code"],
+            allocation["source_warehouse"],
+            allocation["batch_no"],
+        )
+
+        stock_requests[key] = (
+            flt(stock_requests.get(key, 0))
+            + flt(allocation["qty"])
+        )
+
+    for (
+        stock_key,
+        requested_qty
+    ) in stock_requests.items():
+
+        item_code = stock_key[0]
+        warehouse = stock_key[1]
+        batch_no = stock_key[2]
+
+        has_batch_no = int(
+            frappe.db.get_value(
+                "Item",
+                item_code,
+                "has_batch_no"
+            ) or 0
+        )
+
+        available_qty = 0
+
+        if has_batch_no:
+
+            # ERPNext batch-bundle stock helper when available.
+            batch_helper = globals().get(
+                "_sr_v3_batch_bundle_stock"
+            )
+
+            if callable(batch_helper):
+                try:
+                    batch_stock = batch_helper(
+                        item_code,
+                        warehouse
+                    ) or {}
+
+                    available_qty = flt(
+                        batch_stock.get(
+                            batch_no,
+                            0
+                        )
+                    )
+                except Exception:
+                    available_qty = 0
+
+            # Fallback to Stock Ledger Entry.
+            if available_qty <= 0:
+                available_qty = flt(
+                    frappe.db.sql(
+                        """
+                        SELECT SUM(actual_qty)
+                        FROM `tabStock Ledger Entry`
+                        WHERE item_code = %s
+                          AND warehouse = %s
+                          AND batch_no = %s
+                          AND is_cancelled = 0
+                        """,
+                        (
+                            item_code,
+                            warehouse,
+                            batch_no,
+                        ),
+                    )[0][0]
+                    or 0
+                )
+
+        else:
+            available_qty = flt(
+                frappe.db.get_value(
+                    "Bin",
+                    {
+                        "item_code": item_code,
+                        "warehouse": warehouse,
+                    },
+                    "actual_qty"
+                ) or 0
+            )
+
+        if (
+            requested_qty >
+            available_qty + 0.0000001
+        ):
+            label = item_code
+
+            if batch_no:
+                label += (
+                    " / Batch " +
+                    batch_no
+                )
+
+            frappe.throw(
+                label +
+                ": available " +
+                str(available_qty) +
+                ", requested " +
+                str(requested_qty)
+            )
+
+    # ---------------------------------------------------------
+    # CREATE / RESUME ONE Stock Entry.
+    # If stock_entry is supplied, update the SAME Draft.
+    # ---------------------------------------------------------
+    if stock_entry:
+        stock_entry = str(stock_entry or "").strip()
+
+        if not frappe.db.exists(
+            "Stock Entry",
+            stock_entry
+        ):
+            frappe.throw(
+                "Draft Stock Entry not found: " +
+                stock_entry
+            )
+
+        se = frappe.get_doc(
+            "Stock Entry",
+            stock_entry
+        )
+
+        if se.docstatus != 0:
+            frappe.throw(
+                "Stock Entry is not in Draft state."
+            )
+
+        # Rebuild the child rows from the current batch selection.
+        se.set("items", [])
+    else:
+        se = frappe.new_doc(
+            "Stock Entry"
+        )
+
+    se.stock_entry_type = (
+        "Material Transfer for Manufacture"
+    )
+
+    se.purpose = (
+        "Material Transfer for Manufacture"
+    )
+
+    se.use_serial_batch_fields = 1
+
+    se.work_order = wo.name
+
+    se.company = wo.company
+
+    se.from_bom = 1
+
+    se.bom_no = (
+        wo.bom_no or ""
+    )
+
+    se.fg_completed_qty = flt(
+        wo.qty or 0
+    )
+
+    se.remarks = (
+        "SR Connect Multi Batch Transfer"
+        + " | Work Order: "
+        + str(wo.name)
+    )
+
+    for allocation in allocations:
+
+        child = se.append(
+            "items",
+            {}
+        )
+
+        child.item_code = (
+            allocation["item_code"]
+        )
+
+        child.qty = flt(
+            allocation["qty"]
+        )
+
+        child.uom = (
+            frappe.db.get_value(
+                "Item",
+                allocation["item_code"],
+                "stock_uom"
+            ) or ""
+        )
+
+        child.s_warehouse = (
+            allocation["source_warehouse"]
+        )
+
+        child.t_warehouse = (
+            wo.wip_warehouse
+        )
+
+        if allocation["has_batch_no"]:
+            child.batch_no = (
+                allocation["batch_no"]
+            )
+
+            # IMPORTANT:
+            # Use the legacy serial/batch fields directly.
+            # Do not let ERPNext create a Serial and Batch Bundle
+            # for this row while batch_no is already supplied.
+            child.use_serial_batch_fields = 1
+            child.serial_and_batch_bundle = None
+
+    if not se.items:
+        frappe.throw(
+            "No Stock Entry rows were created."
+        )
+
+    try:
+        if stock_entry:
+            # Existing Draft: update the SAME document.
+            se.save(
+                ignore_permissions=True
+            )
+        else:
+            # First save: create a new Draft.
+            se.insert(
+                ignore_permissions=True
+            )
+
+        # Draft only: submit is intentionally skipped.
+        frappe.db.commit()
+
+    except Exception:
+        frappe.db.rollback()
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "SR MULTI BATCH STOCK ENTRY CLEAN"
+        )
+
+        raise
+
+    return {
+        "success": True,
+        "stock_entry": str(se.name),
+        "name": str(se.name),
+        "work_order": str(wo.name),
+        "message": (
+            "Stock Entry saved as Draft."
+        ),
+    }
+
+
+
+# SR_SAVE_SUBMIT_EXISTING_DRAFT_V1
+
+@frappe.whitelist()
+def submit_stock_entry_from_work_order_multi_batch_final(
+    stock_entry_name,
+):
+    if _is_guest():
+        frappe.throw("Please login.")
+
+    stock_entry_name = str(
+        stock_entry_name or ""
+    ).strip()
+
+    if not stock_entry_name:
+        frappe.throw(
+            "Stock Entry is required."
+        )
+
+    if not frappe.db.exists(
+        "Stock Entry",
+        stock_entry_name,
+    ):
+        frappe.throw(
+            "Draft Stock Entry not found."
+        )
+
+    se = frappe.get_doc(
+        "Stock Entry",
+        stock_entry_name,
+    )
+
+    if se.docstatus != 0:
+        frappe.throw(
+            "This Stock Entry is not in Draft state."
+        )
+
+    if not se.work_order:
+        frappe.throw(
+            "Work Order is missing from the Stock Entry."
+        )
+
+    roles = set(
+        frappe.get_roles(
+            frappe.session.user
+        )
+    )
+
+    manager_access = bool(
+        {
+            "System Manager",
+            "Manufacturing Manager",
+            "Production Manager",
+        } & roles
+    )
+
+    if not manager_access:
+
+        allowed = frappe.db.sql(
+            """
+            SELECT jc.name
+            FROM `tabJob Card` jc
+            INNER JOIN `tabToDo` td
+                ON td.reference_type = 'Job Card'
+               AND td.reference_name = jc.name
+            WHERE td.allocated_to = %s
+              AND td.status = 'Open'
+              AND jc.work_order = %s
+            LIMIT 1
+            """,
+            (
+                frappe.session.user,
+                se.work_order,
+            ),
+            as_dict=True,
+        )
+
+        if not allowed:
+            frappe.throw(
+                "You are not allowed to submit this Stock Entry."
+            )
+
+    try:
+
+        se.submit()
+
+        frappe.db.commit()
+
+    except Exception:
+
+        frappe.db.rollback()
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "SR SAVE SUBMIT FINAL ERROR",
+        )
+
+        raise
+
+    return {
+        "success": True,
+        "stock_entry": str(se.name),
+        "name": str(se.name),
+        "work_order": str(se.work_order),
+        "message":
+            "Stock Entry submitted successfully.",
+    }
+
+
+
+# SR DRAFT RESUME FINAL V2
+
+@frappe.whitelist()
+def sr_stock_entry_draft_for_work_order_v2(
+    work_order_id,
+    batch_no=None,
+):
+    if not _sr_stock_v2_has_access():
+        frappe.throw("You do not have Stock Entry access.")
+
+    work_order_id = str(
+        work_order_id or ""
+    ).strip()
+
+    batch_no = str(
+        batch_no or ""
+    ).strip()
+
+    if not work_order_id:
+        frappe.throw("Work Order is required.")
+
+    if not frappe.db.exists(
+        "Work Order",
+        work_order_id
+    ):
+        frappe.throw("Work Order not found.")
+
+    wo = frappe.get_doc(
+        "Work Order",
+        work_order_id
+    )
+
+    wo_batch = str(
+        getattr(
+            wo,
+            "custom_new_batch_id",
+            ""
+        ) or ""
+    ).strip()
+
+    if (
+        batch_no
+        and wo_batch
+        and batch_no != wo_batch
+    ):
+        return {
+            "success": True,
+            "has_draft": False,
+            "draft": None,
+            "work_order": work_order_id,
+            "batch_no": wo_batch,
+        }
+
+    drafts = frappe.get_all(
+        "Stock Entry",
+        filters={
+            "work_order": work_order_id,
+            "docstatus": 0,
+            "stock_entry_type":
+                "Material Transfer for Manufacture",
+        },
+        fields=[
+            "name",
+            "work_order",
+            "stock_entry_type",
+            "posting_date",
+            "creation",
+            "modified",
+        ],
+        order_by="creation desc",
+        limit_page_length=20,
+    )
+
+    result = []
+
+    for entry in drafts:
+
+        children = frappe.get_all(
+            "Stock Entry Detail",
+            filters={
+                "parent": entry.name,
+                "parenttype": "Stock Entry",
+            },
+            fields=[
+                "name",
+                "idx",
+                "item_code",
+                "item_name",
+                "qty",
+                "stock_uom",
+                "s_warehouse",
+                "t_warehouse",
+                "batch_no",
+                "use_serial_batch_fields",
+                "serial_and_batch_bundle",
+            ],
+            order_by="idx asc",
+            limit_page_length=500,
+        )
+
+        result.append({
+            "name":
+                str(entry.name or ""),
+
+            "work_order":
+                str(
+                    entry.work_order
+                    or work_order_id
+                ),
+
+            "stock_entry_type":
+                str(
+                    entry.stock_entry_type
+                    or ""
+                ),
+
+            "posting_date":
+                str(
+                    entry.posting_date
+                    or ""
+                ),
+
+            "creation":
+                str(
+                    entry.creation
+                    or ""
+                ),
+
+            "modified":
+                str(
+                    entry.modified
+                    or ""
+                ),
+
+            "items": [
+                {
+                    "name":
+                        str(row.name or ""),
+
+                    "idx":
+                        int(row.idx or 0),
+
+                    "item_code":
+                        str(
+                            row.item_code
+                            or ""
+                        ).strip(),
+
+                    "item_name":
+                        str(
+                            row.item_name
+                            or ""
+                        ).strip(),
+
+                    "qty":
+                        float(
+                            row.qty or 0
+                        ),
+
+                    "stock_uom":
+                        str(
+                            row.stock_uom
+                            or ""
+                        ).strip(),
+
+                    "s_warehouse":
+                        str(
+                            row.s_warehouse
+                            or ""
+                        ).strip(),
+
+                    "t_warehouse":
+                        str(
+                            row.t_warehouse
+                            or ""
+                        ).strip(),
+
+                    "batch_no":
+                        str(
+                            row.batch_no
+                            or ""
+                        ).strip(),
+
+                    "use_serial_batch_fields":
+                        int(
+                            row.use_serial_batch_fields
+                            or 0
+                        ),
+
+                    "serial_and_batch_bundle":
+                        row.serial_and_batch_bundle
+                        or None,
+                }
+                for row in children
+            ],
+        })
+
+    return {
+        "success": True,
+        "has_draft": bool(result),
+        "draft":
+            result[0]
+            if result
+            else None,
+        "drafts":
+            result,
+        "work_order":
+            work_order_id,
+        "batch_no":
+            wo_batch,
+    }
+
+
+# SR DRAFT RESUME EXTERNAL V1
+
+@frappe.whitelist()
+def sr_stock_entry_draft_for_work_order_v1(work_order_id):
+    if not _sr_stock_v2_has_access():
+        frappe.throw("You do not have Stock Entry access.")
+
+    work_order_id = str(work_order_id or "").strip()
+
+    if not work_order_id:
+        frappe.throw("Work Order is required.")
+
+    if not frappe.db.exists("Work Order", work_order_id):
+        frappe.throw("Work Order not found.")
+
+    drafts = frappe.get_all(
+        "Stock Entry",
+        filters={
+            "work_order": work_order_id,
+            "docstatus": 0,
+            "stock_entry_type": "Material Transfer for Manufacture",
+        },
+        fields=[
+            "name",
+            "work_order",
+            "stock_entry_type",
+            "posting_date",
+            "creation",
+            "modified",
+        ],
+        order_by="creation desc, modified desc",
+        limit_page_length=20,
+    )
+
+    result = []
+
+    for entry in drafts:
+        children = frappe.get_all(
+            "Stock Entry Detail",
+            filters={
+                "parent": entry.name,
+                "parenttype": "Stock Entry",
+            },
+            fields=[
+                "name",
+                "idx",
+                "item_code",
+                "item_name",
+                "qty",
+                "stock_uom",
+                "s_warehouse",
+                "t_warehouse",
+                "batch_no",
+                "use_serial_batch_fields",
+                "serial_and_batch_bundle",
+            ],
+            order_by="idx asc",
+            limit_page_length=500,
+        )
+
+        result.append(
+            {
+                "name": str(entry.name or ""),
+                "work_order": str(
+                    entry.work_order or work_order_id
+                ),
+                "stock_entry_type": str(
+                    entry.stock_entry_type or ""
+                ),
+                "posting_date": str(
+                    entry.posting_date or ""
+                ),
+                "creation": str(
+                    entry.creation or ""
+                ),
+                "modified": str(
+                    entry.modified or ""
+                ),
+                "items": [
+                    {
+                        "name": str(row.name or ""),
+                        "idx": int(row.idx or 0),
+                        "item_code": str(
+                            row.item_code or ""
+                        ).strip(),
+                        "item_name": str(
+                            row.item_name or ""
+                        ).strip(),
+                        "qty": float(row.qty or 0),
+                        "stock_uom": str(
+                            row.stock_uom or ""
+                        ).strip(),
+                        "s_warehouse": str(
+                            row.s_warehouse or ""
+                        ).strip(),
+                        "t_warehouse": str(
+                            row.t_warehouse or ""
+                        ).strip(),
+                        "batch_no": str(
+                            row.batch_no or ""
+                        ).strip(),
+                        "use_serial_batch_fields": int(
+                            row.use_serial_batch_fields or 0
+                        ),
+                        "serial_and_batch_bundle":
+                            row.serial_and_batch_bundle or None,
+                    }
+                    for row in children
+                ],
+            }
+        )
+
+    return {
+        "success": True,
+        "work_order": work_order_id,
+        "has_draft": bool(result),
+        "draft": result[0] if result else None,
+        "drafts": result,
     }

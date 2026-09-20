@@ -10707,6 +10707,13 @@ async function srOpenStockBalanceMonth(month){
      * ======================================================
      * LOAD BATCH NO FROM ACTUAL STOCK LEDGER ENTRY
      * ======================================================
+     *
+     * SLE.batch_no can be empty when ERPNext uses
+     * Serial and Batch Bundle.
+     *
+     * First load SLE.batch_no + serial_and_batch_bundle.
+     * If batch_no is empty, load the actual batch from
+     * Serial and Batch Entry.
      */
 
     try{
@@ -10739,7 +10746,8 @@ async function srOpenStockBalanceMonth(month){
 
                   fields: [
                     "name",
-                    "batch_no"
+                    "batch_no",
+                    "serial_and_batch_bundle"
                   ],
 
                   filters: [
@@ -10758,9 +10766,14 @@ async function srOpenStockBalanceMonth(month){
         const sleRows =
           Array.isArray(batchResponse)
             ? batchResponse
-            : [];
+            : (
+                Array.isArray(batchResponse?.message)
+                  ? batchResponse.message
+                  : []
+              );
 
         const batchMap = {};
+        const bundleIds = [];
 
         sleRows.forEach(function(row){
 
@@ -10769,16 +10782,150 @@ async function srOpenStockBalanceMonth(month){
               row.name || ""
             ).trim();
 
+          const batch =
+            String(
+              row.batch_no || ""
+            ).trim();
+
+          const bundle =
+            String(
+              row.serial_and_batch_bundle || ""
+            ).trim();
+
           if(name){
 
-            batchMap[name] =
-              String(
-                row.batch_no || ""
-              ).trim();
+            batchMap[name] = batch;
+
+          }
+
+          if(bundle){
+
+            bundleIds.push(bundle);
 
           }
 
         });
+
+        const uniqueBundleIds =
+          [...new Set(bundleIds)].filter(Boolean);
+
+        /*
+         * Load Batch No from Serial and Batch Entry
+         * for SLE rows where direct batch_no is empty.
+         */
+
+        if(uniqueBundleIds.length){
+
+          const bundleResponse =
+            await api(
+              "/api/method/frappe.client.get_list",
+              {
+                method: "POST",
+
+                body:
+                  JSON.stringify({
+                    doctype:
+                      "Serial and Batch Entry",
+
+                    fields: [
+                      "parent",
+                      "batch_no",
+                      "idx"
+                    ],
+
+                    filters: [
+                      [
+                        "parent",
+                        "in",
+                        uniqueBundleIds
+                      ]
+                    ],
+
+                    order_by:
+                      "parent asc, idx asc",
+
+                    limit_page_length: 5000
+                  })
+              }
+            );
+
+          const bundleRows =
+            Array.isArray(bundleResponse)
+              ? bundleResponse
+              : (
+                  Array.isArray(bundleResponse?.message)
+                    ? bundleResponse.message
+                    : []
+                );
+
+          const bundleBatchMap = {};
+
+          bundleRows.forEach(function(entry){
+
+            const parent =
+              String(
+                entry.parent || ""
+              ).trim();
+
+            const batch =
+              String(
+                entry.batch_no || ""
+              ).trim();
+
+            if(!parent || !batch){
+
+              return;
+
+            }
+
+            if(!bundleBatchMap[parent]){
+
+              bundleBatchMap[parent] = [];
+
+            }
+
+            if(
+              !bundleBatchMap[parent].includes(batch)
+            ){
+
+              bundleBatchMap[parent].push(batch);
+
+            }
+
+          });
+
+          sleRows.forEach(function(row){
+
+            const name =
+              String(
+                row.name || ""
+              ).trim();
+
+            const directBatch =
+              String(
+                row.batch_no || ""
+              ).trim();
+
+            const bundle =
+              String(
+                row.serial_and_batch_bundle || ""
+              ).trim();
+
+            if(
+              name &&
+              !directBatch &&
+              bundle &&
+              bundleBatchMap[bundle]
+            ){
+
+              batchMap[name] =
+                bundleBatchMap[bundle].join(", ");
+
+            }
+
+          });
+
+        }
 
         rows =
           rows.map(function(row){

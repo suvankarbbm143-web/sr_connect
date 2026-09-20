@@ -6627,7 +6627,21 @@ def get_stock_balance_dates(item_code, month, category=None):
             sle.actual_qty,
             sle.qty_after_transaction,
             sle.stock_uom,
-            sle.batch_no,
+            COALESCE(
+                sle.batch_no,
+                (
+                    SELECT GROUP_CONCAT(
+                        DISTINCT sbe.batch_no
+                        ORDER BY sbe.idx ASC
+                        SEPARATOR ', '
+                    )
+                    FROM `tabSerial and Batch Entry` sbe
+                    WHERE sbe.parent = sle.serial_and_batch_bundle
+                      AND sbe.parenttype = 'Serial and Batch Bundle'
+                      AND sbe.batch_no IS NOT NULL
+                      AND sbe.batch_no != ''
+                )
+            ) AS batch_no,
             sle.serial_and_batch_bundle,
             sle.voucher_type,
             sle.voucher_no
@@ -6719,26 +6733,9 @@ def get_stock_balance_dates(item_code, month, category=None):
                 erp_balance
             ),
             "movement": movement,
-            "batch_no": (
-                str(row.batch_no or "").strip()
-                or (
-                    str(
-                        frappe.db.get_value(
-                            "Serial and Batch Entry",
-                            {
-                                "parent": row.serial_and_batch_bundle,
-                                "parenttype": "Serial and Batch Bundle",
-                                "batch_no": ["is", "set"],
-                            },
-                            "batch_no",
-                            order_by="idx asc",
-                        )
-                        or ""
-                    ).strip()
-                    if row.serial_and_batch_bundle
-                    else ""
-                )
-            ),
+            "batch_no": str(
+                row.batch_no or ""
+            ).strip(),
             "voucher_type": row.voucher_type or "",
             "voucher_no": row.voucher_no or "",
             "posting_time": str(row.posting_time or ""),
